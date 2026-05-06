@@ -36,7 +36,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
 
   return (
     <div 
-      className="fixed inset-0 md:inset-y-0 md:right-0 md:left-auto md:w-full md:max-w-md bg-white flex flex-col z-[60] shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right duration-300"
+      className="fixed inset-0 md:inset-y-0 md:right-0 md:left-auto md:w-full md:max-w-md bg-white flex flex-col z-[9999] shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right duration-300 h-[100dvh] md:h-screen overscroll-contain"
+      style={{ height: '100dvh' }}
     >
       {/* Header */}
       <div className="safe-top p-4 md:p-6 border-b border-earth-light bg-earth-dark text-white flex items-center justify-between shrink-0">

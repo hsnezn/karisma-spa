@@ -176,7 +176,7 @@ export default function Home() {
 
       {/* Login Overlay */}
       {loginView !== 'none' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-0 md:p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-0 md:p-4">
           <div className="bg-white w-full h-full md:h-auto md:max-w-md p-6 md:p-8 md:rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300 border border-earth-light overflow-y-auto">
             <div className="flex justify-end md:hidden mb-4">
               <button onClick={() => { setLoginView('none'); setShowStaffField(false); setInviteCode(''); }} className="p-2 text-earth-dark">✕</button>
