@@ -200,21 +200,21 @@ const Radar: React.FC<RadarProps> = ({ onUserClick }) => {
   };
 
   return (
-    <div className="relative w-full h-[500px] md:h-[600px] rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-200">
+    <div className="relative w-full h-[450px] md:h-[600px] rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-200">
       {/* Controls Overlay */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-lg px-4 flex flex-col gap-2 md:gap-3">
+      <div className="absolute top-2 md:top-4 left-0 right-0 z-[1000] px-2 md:px-4 flex flex-row md:flex-col gap-2 justify-center">
         <button 
           onClick={handleAddSpaLocation}
-          className="bg-emerald-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-xl font-bold shadow-2xl hover:bg-emerald-700 transition-all transform active:scale-95 flex items-center justify-center gap-2 text-xs md:text-base"
+          className="flex-1 md:flex-none bg-emerald-600 text-white px-2 py-2 md:px-6 md:py-3 rounded-xl font-bold shadow-2xl hover:bg-emerald-700 transition-all transform active:scale-95 flex items-center justify-center gap-1 md:gap-2 text-[10px] md:text-base"
         >
-          <span>📍</span> Register Spa Branch
+          <span>📍</span> <span className="hidden xs:inline">Register Branch</span><span className="xs:hidden">Branch</span>
         </button>
         
         <button 
           onClick={requestLocation}
-          className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-xl font-bold shadow-2xl hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center gap-2 text-xs md:text-base"
+          className="flex-1 md:flex-none bg-blue-600 text-white px-2 py-2 md:px-6 md:py-3 rounded-xl font-bold shadow-2xl hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center gap-1 md:gap-2 text-[10px] md:text-base"
         >
-          <span>🛰️</span> Update My GPS Location
+          <span>🛰️</span> <span className="hidden xs:inline">Update Location</span><span className="xs:hidden">GPS</span>
         </button>
       </div>
 
@@ -282,22 +282,22 @@ const Radar: React.FC<RadarProps> = ({ onUserClick }) => {
       </MapContainer>
 
       {/* Legend Overlay */}
-      <div className="absolute bottom-4 left-4 bg-white/95 p-3 rounded-xl border border-slate-200 shadow-lg z-[1000]">
-        <div className="mb-2 pb-2 border-b border-slate-100 flex flex-col gap-1">
-          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">GPS Status</div>
-          <div className="text-[11px] font-mono font-bold text-emerald-600">
+      <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 right-2 md:right-auto bg-white/95 p-2 md:p-3 rounded-xl border border-slate-200 shadow-lg z-[1000] flex md:flex-col items-center md:items-start justify-between md:justify-start gap-2">
+        <div className="md:mb-2 md:pb-2 md:border-b border-slate-100 flex flex-col gap-0.5 md:gap-1">
+          <div className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-tighter">GPS Status</div>
+          <div className="text-[9px] md:text-[11px] font-mono font-bold text-emerald-600 truncate max-w-[100px] md:max-w-none">
             {gpsDebug}
           </div>
         </div>
-        <div className="space-y-2 text-[10px] font-bold text-slate-600">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-amber-500" /> NEW BOOKING
+        <div className="flex md:flex-col gap-2 md:space-y-2 text-[8px] md:text-[10px] font-bold text-slate-600">
+          <div className="flex items-center gap-1 md:gap-2">
+            <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-amber-500" /> <span className="hidden xs:inline">NEW BOOKING</span><span className="xs:hidden">NEW</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-emerald-500" /> ACTIVE SESSION
+          <div className="flex items-center gap-1 md:gap-2">
+            <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-emerald-500" /> <span className="hidden xs:inline">ACTIVE SESSION</span><span className="xs:hidden">ACTIVE</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500" /> WAITING
+          <div className="flex items-center gap-1 md:gap-2">
+            <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-blue-500" /> <span className="hidden xs:inline">WAITING</span><span className="xs:hidden">WAIT</span>
           </div>
         </div>
       </div>
