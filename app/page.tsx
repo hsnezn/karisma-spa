@@ -176,8 +176,11 @@ export default function Home() {
 
       {/* Login Overlay */}
       {loginView !== 'none' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md p-6 md:p-8 rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300 border border-earth-light max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-0 md:p-4">
+          <div className="bg-white w-full h-full md:h-auto md:max-w-md p-6 md:p-8 md:rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300 border border-earth-light overflow-y-auto">
+            <div className="flex justify-end md:hidden mb-4">
+              <button onClick={() => { setLoginView('none'); setShowStaffField(false); setInviteCode(''); }} className="p-2 text-earth-dark">✕</button>
+            </div>
             <div className="text-center mb-6 md:mb-8">
               <h3 className="text-xl md:text-2xl font-serif text-earth-dark mb-2">
                 {loginView === 'operator' ? 'Staff Portal' : 
@@ -254,7 +257,7 @@ export default function Home() {
             </section>
 
             {/* BEYOND BLISSED SECTION - MATCHING IMAGE */}
-            <section className="bg-earth-dark text-earth-cream py-16 md:py-24 px-6 md:px-20 grid md:grid-cols-2 gap-12 items-center">
+            <section className="bg-earth-dark text-earth-cream py-16 md:py-24 px-6 md:px-20 grid md:grid-cols-2 gap-12 items-center overflow-hidden">
               <div className="space-y-6 md:space-y-8 max-w-xl">
                 <h2 className="text-3xl md:text-5xl font-serif">
                   Beyond <span className="italic font-light">Blissed</span>
