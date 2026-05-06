@@ -39,25 +39,46 @@ export default function Home() {
     }
   }, []);
 
-  // Simulated User Database
+  // Simulated User Database with LocalStorage Persistence
   const [registeredUsers, setRegisteredUsers] = useState([
     { user: 'staff_admin', pass: 'karisma2026', role: 'operator' },
     { user: 'guest_user', pass: 'welcome', role: 'user' }
   ]);
 
-  const handleLogin = (role: 'user' | 'operator') => {
-    const user = registeredUsers.find(u => u.user === username && u.pass === password && u.role === role);
+  // Handle persistence in useEffect to avoid Hydration Mismatch
+  useEffect(() => {
+    const saved = localStorage.getItem('karisma_users');
+    if (saved) {
+      setRegisteredUsers(JSON.parse(saved));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('karisma_users', JSON.stringify(registeredUsers));
+  }, [registeredUsers]);
+
+  const handleLogin = (requestedRole: 'user' | 'operator') => {
+    // Find user by name (case-insensitive) and pass (case-sensitive)
+    const user = registeredUsers.find(u => 
+      u.user.toLowerCase() === username.toLowerCase() && 
+      u.pass === password
+    );
 
     if (user) {
-      setIsLoggedIn(true);
-      setUserRole(role);
-      setLoginView('none');
-      setError('');
-      if (role === 'operator') setShowDashboard(true);
-      // Save session
-      localStorage.setItem('karisma_session', JSON.stringify({ user: username, role }));
+      // Check if the role matches what portal they are in
+      if (user.role === requestedRole) {
+        setIsLoggedIn(true);
+        setUserRole(user.role);
+        setLoginView('none');
+        setError('');
+        if (user.role === 'operator') setShowDashboard(true);
+        // Save session
+        localStorage.setItem('karisma_session', JSON.stringify({ user: user.user, role: user.role }));
+      } else {
+        setError(`This account is registered as a ${user.role}. Please use the correct portal.`);
+      }
     } else {
-      setError(`Invalid credentials for ${role} login.`);
+      setError(`Invalid username or password.`);
     }
   };
 
@@ -166,6 +187,11 @@ export default function Home() {
             </div>
             
             <div className="space-y-3 md:space-y-4">
+              {loginView === 'operator' && (
+                <div className="p-3 bg-earth-cream rounded-xl border border-earth-light text-[10px] text-earth-mid italic text-center mb-2">
+                  Staff Admin: <span className="font-bold text-earth-dark">staff_admin</span> / <span className="font-bold text-earth-dark">karisma2026</span>
+                </div>
+              )}
               {error && (
                 <div className="p-3 bg-red-100 text-red-700 text-[10px] md:text-xs rounded-xl border border-red-200 font-bold animate-pulse">
                   {error}
