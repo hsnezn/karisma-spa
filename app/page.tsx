@@ -27,6 +27,18 @@ export default function Home() {
   const [showStaffField, setShowStaffField] = useState(false);
   const [error, setError] = useState('');
 
+  // PERSISTENT LOGIN EFFECT
+  useEffect(() => {
+    const savedUser = localStorage.getItem('karisma_session');
+    if (savedUser) {
+      const userData = JSON.parse(savedUser);
+      setIsLoggedIn(true);
+      setUserRole(userData.role);
+      setUsername(userData.user);
+      if (userData.role === 'operator') setShowDashboard(true);
+    }
+  }, []);
+
   // Simulated User Database
   const [registeredUsers, setRegisteredUsers] = useState([
     { user: 'staff_admin', pass: 'karisma2026', role: 'operator' },
@@ -42,6 +54,8 @@ export default function Home() {
       setLoginView('none');
       setError('');
       if (role === 'operator') setShowDashboard(true);
+      // Save session
+      localStorage.setItem('karisma_session', JSON.stringify({ user: username, role }));
     } else {
       setError(`Invalid credentials for ${role} login.`);
     }
@@ -76,6 +90,8 @@ export default function Home() {
     setLoginView('none');
     if (role === 'operator') setShowDashboard(true);
     setError('');
+    // Save session
+    localStorage.setItem('karisma_session', JSON.stringify({ user: username, role }));
   };
 
   const handleLogout = () => {
@@ -86,48 +102,49 @@ export default function Home() {
     setPassword('');
     setInviteCode('');
     setShowStaffField(false);
+    localStorage.removeItem('karisma_session');
   };
 
   return (
     <main className="min-h-screen bg-earth-cream text-earth-dark font-sans">
       {/* Navigation */}
       <nav className="fixed w-full z-40 bg-white/90 backdrop-blur-md border-b border-earth-light">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="text-xl md:text-2xl font-serif italic text-earth-dark font-bold tracking-tight uppercase">
-            Karisma Home & Hotel <br className="hidden md:block" />
-            <span className="text-sm font-normal normal-case block -mt-1">Massage Services</span>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-20 flex items-center justify-between">
+          <div className="text-lg md:text-2xl font-serif italic text-earth-dark font-bold tracking-tight uppercase leading-tight">
+            Karisma Home & Hotel <br className="md:block" />
+            <span className="text-[10px] md:text-sm font-normal normal-case block -mt-1">Massage Services</span>
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-2 md:gap-4">
             {!isLoggedIn ? (
               <>
                 <button 
                   onClick={() => { setLoginView('create-account'); setError(''); }}
-                  className="text-earth-dark text-sm font-bold hover:text-accent-brown"
+                  className="text-earth-dark text-[10px] md:text-sm font-bold hover:text-accent-brown"
                 >
-                  Create Account
+                  Create
                 </button>
                 <button 
                   onClick={() => { setLoginView('user'); setError(''); }}
-                  className="text-earth-dark text-sm font-bold hover:text-accent-brown border-2 border-earth-dark px-4 py-2 rounded-full"
+                  className="text-earth-dark text-[10px] md:text-sm font-bold hover:text-accent-brown border-2 border-earth-dark px-2 md:px-4 py-1 md:py-2 rounded-full"
                 >
                   Sign In
                 </button>
                 <button 
                   onClick={() => { setLoginView('operator'); setError(''); }}
-                  className="bg-earth-dark text-white px-6 py-2 rounded-full text-sm font-semibold hover:bg-accent-brown transition-all shadow-lg"
+                  className="bg-earth-dark text-white px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold hover:bg-accent-brown transition-all shadow-lg"
                 >
-                  Staff Portal
+                  Staff
                 </button>
               </>
             ) : (
-              <div className="flex items-center gap-4">
-                <span className="text-sm italic">Welcome, {userRole === 'operator' ? 'Staff' : username}</span>
+              <div className="flex items-center gap-2 md:gap-4">
+                <span className="text-[10px] md:text-sm italic truncate max-w-[60px] md:max-w-none">Hi, {userRole === 'operator' ? 'Staff' : username}</span>
                 {userRole === 'operator' && (
-                  <button onClick={() => setShowDashboard(!showDashboard)} className="text-sm font-bold underline">
-                    {showDashboard ? 'View Site' : 'View Map'}
+                  <button onClick={() => setShowDashboard(!showDashboard)} className="text-[10px] md:text-sm font-bold underline">
+                    {showDashboard ? 'Site' : 'Map'}
                   </button>
                 )}
-                <button onClick={handleLogout} className="text-earth-mid text-sm font-semibold hover:text-earth-dark">Logout</button>
+                <button onClick={handleLogout} className="text-earth-mid text-[10px] md:text-sm font-bold">Logout</button>
               </div>
             )}
           </div>
@@ -233,10 +250,10 @@ export default function Home() {
             </section>
 
             {/* MENU SECTION - MATCHING IMAGE */}
-            <section className="bg-earth-light py-24 px-6 text-center">
-              <h2 className="text-4xl font-serif text-earth-dark mb-16">Blissful Karisma Menu</h2>
+            <section className="bg-earth-light py-16 md:py-24 px-4 md:px-6 text-center">
+              <h2 className="text-3xl md:text-4xl font-serif text-earth-dark mb-12 md:mb-16">Blissful Karisma Menu</h2>
               
-              <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-4">
                 {[
                   { name: 'Nuru Massage', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
                   { name: 'Yoni Massage', img: 'https://images.unsplash.com/photo-1612110186545-798d9b96a40f?auto=format&fit=crop&q=80&w=400' },
@@ -244,11 +261,11 @@ export default function Home() {
                   { name: 'Best Massage', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
                   { name: 'Combination', img: 'https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=400' }
                 ].map((item, i) => (
-                  <div key={i} className="relative aspect-square group cursor-pointer overflow-hidden shadow-xl border-4 border-white">
+                  <div key={i} className="relative aspect-square group cursor-pointer overflow-hidden shadow-xl border-2 md:border-4 border-white">
                     <img src={item.img} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                     <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
-                    <div className="absolute inset-0 flex items-center justify-center p-4">
-                      <span className="text-white text-xs font-bold uppercase tracking-widest text-center leading-tight drop-shadow-md">
+                    <div className="absolute inset-0 flex items-center justify-center p-2">
+                      <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-widest text-center leading-tight drop-shadow-md">
                         {item.name}
                       </span>
                     </div>
@@ -256,18 +273,18 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="mt-24 space-y-12">
-                <h2 className="text-4xl md:text-5xl font-serif text-earth-dark underline underline-offset-8 decoration-earth-mid">
+              <div className="mt-16 md:mt-24 space-y-8 md:space-y-12">
+                <h2 className="text-3xl md:text-5xl font-serif text-earth-dark underline underline-offset-8 decoration-earth-mid">
                   Book Your Escape Now!<br />Connect With Us.
                 </h2>
                 
-                <div className="space-y-6 text-2xl md:text-3xl font-black text-earth-dark">
-                  <p className="flex items-center justify-center gap-3">
-                    <span className="text-earth-mid text-sm uppercase tracking-widest font-bold">Viber</span> 
+                <div className="space-y-4 md:space-y-6 text-xl md:text-3xl font-black text-earth-dark">
+                  <p className="flex items-center justify-center gap-2 md:gap-3">
+                    <span className="text-earth-mid text-[10px] md:text-sm uppercase tracking-widest font-bold">Viber</span> 
                     09104314293
                   </p>
-                  <p className="flex items-center justify-center gap-3">
-                    <span className="text-earth-mid text-sm uppercase tracking-widest font-bold">Whatsapp</span> 
+                  <p className="flex items-center justify-center gap-2 md:gap-3">
+                    <span className="text-earth-mid text-[10px] md:text-sm uppercase tracking-widest font-bold">Whatsapp</span> 
                     09104314293
                   </p>
                 </div>

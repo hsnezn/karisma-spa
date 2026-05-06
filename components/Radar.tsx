@@ -167,15 +167,54 @@ const Radar: React.FC<RadarProps> = ({ onUserClick }) => {
     setGpsDebug("Location updated via drag");
   };
 
+  const requestLocation = () => {
+    setGpsDebug("Requesting GPS...");
+    if (navigator.geolocation) {
+      // Check if we are in a secure context
+      if (window.isSecureContext === false) {
+        setGpsDebug("Error: Map requires a Secure Connection (HTTPS)");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, accuracy } = position.coords;
+          setMapCenter([latitude, longitude]);
+          setStaffLocation([latitude, longitude]);
+          updateNearbyUsers(latitude, longitude);
+          setGpsDebug(`Accuracy: ${Math.round(accuracy)}m`);
+        },
+        (error) => {
+          let msg = "GPS Error";
+          if (error.code === 1) msg = "Permission Denied. Please use HTTPS and check browser settings.";
+          if (error.code === 2) msg = "Position Unavailable (Check your signal)";
+          if (error.code === 3) msg = "Request Timed Out";
+          setGpsDebug(msg);
+          alert("Location Error: Please ensure you are using a secure (https) connection and have allowed location access in your browser settings.");
+        },
+        { enableHighAccuracy: true, timeout: 15000 }
+      );
+    } else {
+      setGpsDebug("Browser doesn't support GPS");
+    }
+  };
+
   return (
-    <div className="relative w-full h-[600px] rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-200">
+    <div className="relative w-full h-[500px] md:h-[600px] rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-200">
       {/* Controls Overlay */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-lg px-4 flex flex-col gap-3">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-lg px-4 flex flex-col gap-2 md:gap-3">
         <button 
           onClick={handleAddSpaLocation}
-          className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold shadow-2xl hover:bg-emerald-700 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+          className="bg-emerald-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-xl font-bold shadow-2xl hover:bg-emerald-700 transition-all transform active:scale-95 flex items-center justify-center gap-2 text-xs md:text-base"
         >
-          <span>📍</span> Register Spa Location Here
+          <span>📍</span> Register Spa Branch
+        </button>
+        
+        <button 
+          onClick={requestLocation}
+          className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-xl font-bold shadow-2xl hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center gap-2 text-xs md:text-base"
+        >
+          <span>🛰️</span> Update My GPS Location
         </button>
       </div>
 
