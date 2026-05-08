@@ -13,5 +13,18 @@ export const pusherClient = typeof window !== 'undefined'
   ? new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
       cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
       authEndpoint: '/api/pusher/auth',
+      auth: {
+        params: {
+          // This will be updated dynamically in the component
+          role: 'user'
+        }
+      }
     })
   : null;
+
+// Helper to update auth params
+export const updatePusherAuth = (role: 'user' | 'operator') => {
+  if (pusherClient) {
+    (pusherClient.config as any).auth.params.role = role;
+  }
+};

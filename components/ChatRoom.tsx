@@ -12,10 +12,11 @@ interface Message {
 
 interface ChatRoomProps {
   user: { id: string; name: string; avatar: string; nationality?: string };
+  myId: string;
   onClose: () => void;
 }
 
-const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
+const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
   const isSupport = user.id === 'staff-main';
   const [messages, setMessages] = useState<Message[]>([
     { 
@@ -31,10 +32,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
 
   // REAL-TIME CHAT (Pusher)
   useEffect(() => {
-    if (!pusherClient) return;
+    if (!pusherClient || !myId) return;
 
     // Unique channel for this specific conversation
-    const channelName = `chat-${[user.id, 'staff-main'].sort().join('-')}`;
+    // If I am guest, myId is random, user.id is 'staff-main'
+    // If I am staff, myId is 'staff-main', user.id is random
+    // We always use the guest's ID as the unique channel name
+    const guestId = isSupport ? myId : user.id;
+    const channelName = `private-chat-${guestId}`;
     const channel = pusherClient.subscribe(channelName);
 
     channel.bind('new-message', (data: Message) => {
@@ -48,13 +53,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
     return () => {
       if (pusherClient) pusherClient.unsubscribe(channelName);
     };
-  }, [user.id]);
+  }, [user.id, myId]);
 
   const handleSend = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !myId) return;
     
-    const channelName = `chat-${[user.id, 'staff-main'].sort().join('-')}`;
-    const sender = isSupport ? 'operator' : 'user';
+    const guestId = isSupport ? myId : user.id;
+    const channelName = `private-chat-${guestId}`;
+    const sender = isSupport ? 'user' : 'operator';
 
     // Optimistic UI update
     const tempId = Date.now().toString();

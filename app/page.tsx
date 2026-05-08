@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ChatRoom from '@/components/ChatRoom';
-import { pusherClient } from '@/lib/pusher';
+import { pusherClient, updatePusherAuth } from '@/lib/pusher';
 
 interface User {
   id: string;
@@ -12,6 +12,7 @@ interface User {
 }
 
 export default function Home() {
+  const [myId, setMyId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
   const [activeVisitors, setActiveVisitors] = useState<User[]>([]);
@@ -29,10 +30,14 @@ export default function Home() {
   useEffect(() => {
     if (!pusherClient) return;
 
+    // Update auth role before subscribing
+    updatePusherAuth(userRole || 'user');
+
     const channel = pusherClient.subscribe('presence-visitors');
 
-    if (userRole === 'operator') {
-      channel.bind('pusher:subscription_succeeded', (members: any) => {
+    channel.bind('pusher:subscription_succeeded', (members: any) => {
+      setMyId(members.myID);
+      if (userRole === 'operator') {
         const membersList: User[] = [];
         members.each((member: any) => {
           if (member.id !== 'staff-main') {
@@ -45,8 +50,10 @@ export default function Home() {
           }
         });
         setActiveVisitors(membersList);
-      });
+      }
+    });
 
+    if (userRole === 'operator') {
       channel.bind('pusher:member_added', (member: any) => {
         setActiveVisitors(prev => [...prev, {
           id: member.id,
@@ -353,7 +360,11 @@ export default function Home() {
 
       {/* Chat Room */}
       {selectedUser && (
-        <ChatRoom user={selectedUser} onClose={() => setSelectedUser(null)} />
+        <ChatRoom 
+          user={selectedUser} 
+          myId={myId || ''} 
+          onClose={() => setSelectedUser(null)} 
+        />
       )}
 
       {/* Footer */}

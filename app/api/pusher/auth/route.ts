@@ -11,19 +11,23 @@ export async function POST(req: Request) {
     return new Response('Missing socket_id or channel_name', { status: 400 });
   }
 
-  // Generate a random user ID for anonymous visitors if not logged in
-  const userId = `user-${Math.random().toString(36).substr(2, 9)}`;
+  // Check if this is a staff member based on a custom header or param
+  // For now, we'll check if the name 'staff_admin' is passed or use a simple logic
+  const bodyParams = Object.fromEntries(params.entries());
+  const isStaff = bodyParams.role === 'operator';
+  
+  const userId = isStaff ? 'staff-main' : `user-${Math.random().toString(36).substr(2, 9)}`;
   
   // For demonstration, assign a random nationality
-  const nationalities = ['Japan', 'Philippines'];
+  const nationalities = ['Japan', 'Philippines'] as const;
   const randomNat = nationalities[Math.floor(Math.random() * nationalities.length)];
   
   const presenceData = {
     user_id: userId,
     user_info: {
-      name: `Visitor-${userId.slice(-4)}`,
-      avatar: '👤',
-      nationality: randomNat
+      name: isStaff ? 'Karisma Support' : `Visitor-${userId.slice(-4)}`,
+      avatar: isStaff ? '🧘' : '👤',
+      nationality: isStaff ? 'Philippines' : randomNat
     },
   };
 
