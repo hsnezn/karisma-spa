@@ -2,17 +2,20 @@
 
 import React, { useState, useEffect } from 'react';
 import ChatRoom from '@/components/ChatRoom';
+import { pusherClient } from '@/lib/pusher';
 
 interface User {
   id: string;
   name: string;
   avatar: string;
+  nationality?: 'Japan' | 'Philippines';
 }
 
 export default function Home() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
   const [activeVisitors, setActiveVisitors] = useState<User[]>([]);
+  const [selectedNationality, setSelectedNationality] = useState<'All' | 'Japan' | 'Philippines'>('All');
   const [loginView, setLoginView] = useState<'none' | 'user' | 'operator' | 'create-account'>('none');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<'user' | 'operator' | null>(null);
@@ -22,18 +25,51 @@ export default function Home() {
   const [showStaffField, setShowStaffField] = useState(false);
   const [error, setError] = useState('');
 
-  // Simulation for Visitor Tracking (SalesIQ style)
+  // REAL-TIME VISITOR TRACKING (Pusher Presence)
   useEffect(() => {
+    if (!pusherClient) return;
+
+    const channel = pusherClient.subscribe('presence-visitors');
+
     if (userRole === 'operator') {
-      const dummyVisitors: User[] = [
-        { id: 'v1', name: 'John D.', avatar: '👤' },
-        { id: 'v2', name: 'Sarah M.', avatar: '👩' },
-        { id: 'v3', name: 'Guest 402', avatar: '🎭' },
-        { id: 'v4', name: 'Emma W.', avatar: '✨' },
-      ];
-      setActiveVisitors(dummyVisitors);
+      channel.bind('pusher:subscription_succeeded', (members: any) => {
+        const membersList: User[] = [];
+        members.each((member: any) => {
+          if (member.id !== 'staff-main') {
+            membersList.push({
+              id: member.id,
+              name: member.info.name,
+              avatar: member.info.avatar,
+              nationality: member.info.nationality
+            });
+          }
+        });
+        setActiveVisitors(membersList);
+      });
+
+      channel.bind('pusher:member_added', (member: any) => {
+        setActiveVisitors(prev => [...prev, {
+          id: member.id,
+          name: member.info.name,
+          avatar: member.info.avatar,
+          nationality: member.info.nationality
+        }]);
+      });
+
+      channel.bind('pusher:member_removed', (member: any) => {
+        setActiveVisitors(prev => prev.filter(m => m.id !== member.id));
+      });
     }
+
+    return () => {
+      if (pusherClient) pusherClient.unsubscribe('presence-visitors');
+    };
   }, [userRole]);
+
+  // Filter visitors by selected nationality
+  const filteredVisitors = activeVisitors.filter(v => 
+    selectedNationality === 'All' || v.nationality === selectedNationality
+  );
 
   // PERSISTENT LOGIN EFFECT
   useEffect(() => {
@@ -228,26 +264,75 @@ export default function Home() {
               <p className="text-earth-mid text-sm italic">Real-time visitor insights and engagement (SalesIQ style).</p>
             </div>
             <div className="bg-white rounded-3xl p-8 shadow-2xl border border-earth-light min-h-[500px]">
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-2 bg-earth-cream/50 px-3 py-1.5 rounded-full border border-earth-light">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  <span className="text-earth-dark text-[10px] font-bold uppercase tracking-widest">Live Visitors</span>
+              <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 bg-earth-cream/50 px-3 py-1.5 rounded-full shadow-sm border border-earth-light">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                    <span className="text-earth-dark text-[10px] font-bold uppercase tracking-widest font-mono">Live Visitors</span>
+                  </div>
+                  <div className="flex bg-earth-cream rounded-lg p-1 border border-earth-light">
+                    {(['All', 'Japan', 'Philippines'] as const).map((nat) => (
+                      <button
+                        key={nat}
+                        onClick={() => setSelectedNationality(nat)}
+                        className={`px-3 py-1 text-[10px] font-bold uppercase tracking-tighter rounded-md transition-all ${
+                          selectedNationality === nat 
+                            ? 'bg-earth-dark text-white shadow-md' 
+                            : 'text-earth-mid hover:text-earth-dark'
+                        }`}
+                      >
+                        {nat === 'Japan' ? '🇯🇵 Japan' : nat === 'Philippines' ? '🇵🇭 PH' : '🌍 All'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="text-earth-mid text-[10px] font-bold uppercase">Active: {activeVisitors.length}</div>
+                <div className="text-earth-mid text-[10px] uppercase font-bold tracking-widest">
+                  Showing {filteredVisitors.length} users from {selectedNationality}
+                </div>
               </div>
+              
               <div className="grid gap-4">
-                {activeVisitors.map(v => (
-                  <div key={v.id} className="bg-earth-cream/20 p-6 rounded-2xl border border-earth-light flex items-center justify-between group hover:bg-earth-cream/40 transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-earth-dark text-white flex items-center justify-center text-xl shadow-lg">{v.avatar}</div>
-                      <div>
-                        <h4 className="font-serif text-lg text-earth-dark font-bold">{v.name}</h4>
-                        <div className="flex gap-2 text-[10px] font-bold text-earth-mid uppercase">
-                          <span className="text-emerald-500">Online</span> • <span>Home Page</span>
+                {filteredVisitors.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-earth-mid italic">
+                    <p>No active visitors from {selectedNationality}...</p>
+                  </div>
+                ) : (
+                  filteredVisitors.map((visitor) => (
+                    <div key={visitor.id} className="group bg-earth-cream/20 hover:bg-earth-cream/40 p-4 md:p-6 rounded-2xl border border-earth-light transition-all flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-earth-dark text-white flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform">
+                          {visitor.avatar}
+                        </div>
+                        <div>
+                          <h4 className="font-serif text-lg text-earth-dark font-bold">{visitor.name}</h4>
+                          <div className="flex gap-3 text-[10px] uppercase font-bold tracking-widest text-earth-mid">
+                            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Online</span>
+                            <span>•</span>
+                            <span className="text-earth-dark">{visitor.nationality === 'Japan' ? '🇯🇵 Japanese' : '🇵🇭 Filipino'}</span>
+                          </div>
                         </div>
                       </div>
+                      <button 
+                        onClick={() => setSelectedUser(visitor)}
+                        className="bg-earth-dark text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-md hover:bg-accent-brown transition-all active:scale-95"
+                      >
+                        Initiate Chat
+                      </button>
                     </div>
-                    <button onClick={() => setSelectedUser(v)} className="bg-earth-dark text-white px-6 py-2.5 rounded-full text-xs font-bold hover:bg-accent-brown transition-all">Chat</button>
+                  ))
+                )}
+              </div>
+              
+              <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                {[
+                  { label: 'Group Visitors', val: filteredVisitors.length.toString(), color: 'text-earth-dark' },
+                  { label: 'Live Chats', val: '0', color: 'text-emerald-600' },
+                  { label: 'Avg Time', val: '4m 20s', color: 'text-amber-600' },
+                  { label: 'Conversion', val: '12%', color: 'text-blue-600' }
+                ].map((stat, i) => (
+                  <div key={i} className="bg-earth-cream/30 p-3 md:p-4 rounded-2xl border border-earth-light">
+                    <p className="text-earth-mid text-[8px] md:text-[10px] uppercase font-bold tracking-widest mb-1">{stat.label}</p>
+                    <p className={`text-lg md:text-2xl font-bold ${stat.color}`}>{stat.val}</p>
                   </div>
                 ))}
               </div>

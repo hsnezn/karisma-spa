@@ -11,7 +11,7 @@ interface Message {
 }
 
 interface ChatRoomProps {
-  user: { id: string; name: string; avatar: string };
+  user: { id: string; name: string; avatar: string; nationality?: string };
   onClose: () => void;
 }
 
@@ -31,6 +31,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
 
   // REAL-TIME CHAT (Pusher)
   useEffect(() => {
+    if (!pusherClient) return;
+
     // Unique channel for this specific conversation
     const channelName = `chat-${[user.id, 'staff-main'].sort().join('-')}`;
     const channel = pusherClient.subscribe(channelName);
@@ -44,7 +46,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
     });
 
     return () => {
-      pusherClient.unsubscribe(channelName);
+      if (pusherClient) pusherClient.unsubscribe(channelName);
     };
   }, [user.id]);
 
@@ -99,10 +101,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
             {user.avatar}
           </div>
           <div>
-            <h3 className="font-serif text-lg md:text-xl font-bold leading-tight">{user.name}</h3>
+            <h3 className="font-serif text-lg md:text-xl font-bold leading-tight">
+              {user.name} {user.nationality === 'Japan' ? '🇯🇵' : user.nationality === 'Philippines' ? '🇵🇭' : ''}
+            </h3>
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-              <p className="text-[10px] md:text-xs text-earth-cream/70 uppercase tracking-widest font-bold">Live Booking</p>
+              <p className="text-[10px] md:text-xs text-earth-cream/70 uppercase tracking-widest font-bold">
+                Live {user.nationality || 'Visitor'}
+              </p>
             </div>
           </div>
         </div>

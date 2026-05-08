@@ -14,11 +14,16 @@ export async function POST(req: Request) {
   // Generate a random user ID for anonymous visitors if not logged in
   const userId = `user-${Math.random().toString(36).substr(2, 9)}`;
   
+  // For demonstration, assign a random nationality
+  const nationalities = ['Japan', 'Philippines'];
+  const randomNat = nationalities[Math.floor(Math.random() * nationalities.length)];
+  
   const presenceData = {
     user_id: userId,
     user_info: {
       name: `Visitor-${userId.slice(-4)}`,
-      avatar: '👤'
+      avatar: '👤',
+      nationality: randomNat
     },
   };
 
