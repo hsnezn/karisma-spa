@@ -36,7 +36,10 @@ export default function Home() {
       localStorage.setItem('karisma_visitor_id', vId);
     }
 
-    updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
+    // Update auth role and ID before subscribing
+    if (updatePusherAuth) {
+      updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
+    }
 
     const channel = pusherClient.subscribe('presence-visitors');
 

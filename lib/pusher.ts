@@ -6,7 +6,7 @@ const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
 const secret = process.env.PUSHER_SECRET;
 const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
 
-export const pusherServer = appId && key && secret && cluster
+export const pusherServer = (appId && key && secret && cluster)
   ? new PusherServer({
       appId,
       key,
@@ -16,7 +16,7 @@ export const pusherServer = appId && key && secret && cluster
     })
   : null;
 
-export const pusherClient = typeof window !== 'undefined' && key && cluster
+export const pusherClient = (typeof window !== 'undefined' && key && cluster)
   ? new PusherClient(key, {
       cluster,
       authEndpoint: '/api/pusher/auth',
