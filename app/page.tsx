@@ -28,62 +28,66 @@ export default function Home() {
 
   // PERSISTENT VISITOR ID & PUSHER INIT
   useEffect(() => {
-    if (!pusherClient) return;
+    try {
+      if (!pusherClient) return;
 
-    let vId = localStorage.getItem('karisma_visitor_id');
-    if (!vId) {
-      vId = `user-${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('karisma_visitor_id', vId);
-    }
+      let vId = localStorage.getItem('karisma_visitor_id');
+      if (!vId) {
+        vId = `user-${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('karisma_visitor_id', vId);
+      }
 
-    // Update auth role and ID before subscribing
-    if (updatePusherAuth) {
-      updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
-    }
+      // Update auth role and ID before subscribing
+      if (typeof updatePusherAuth === 'function') {
+        updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
+      }
 
-    const channel = pusherClient.subscribe('presence-visitors');
+      const channel = pusherClient.subscribe('presence-visitors');
 
-    channel.bind('pusher:subscription_succeeded', (members: any) => {
-      setMyId(members.myID);
+      channel.bind('pusher:subscription_succeeded', (members: any) => {
+        setMyId(members.myID);
+        if (userRole === 'operator') {
+          const membersList: User[] = [];
+          members.each((member: any) => {
+            if (member.id !== 'staff-main') {
+              membersList.push({
+                id: member.id,
+                name: member.info.name,
+                avatar: member.info.avatar,
+                nationality: member.info.nationality
+              });
+            }
+          });
+          setActiveVisitors(membersList);
+        }
+      });
+
       if (userRole === 'operator') {
-        const membersList: User[] = [];
-        members.each((member: any) => {
-          if (member.id !== 'staff-main') {
-            membersList.push({
+        channel.bind('pusher:member_added', (member: any) => {
+          if (member.id === 'staff-main') return;
+          setActiveVisitors(prev => {
+            if (prev.find(m => m.id === member.id)) return prev;
+            return [...prev, {
               id: member.id,
               name: member.info.name,
               avatar: member.info.avatar,
               nationality: member.info.nationality
-            });
-          }
+            }];
+          });
         });
-        setActiveVisitors(membersList);
+
+        channel.bind('pusher:member_removed', (member: any) => {
+          setActiveVisitors(prev => prev.filter(m => m.id !== member.id));
+        });
       }
-    });
-
-    if (userRole === 'operator') {
-      channel.bind('pusher:member_added', (member: any) => {
-        // Prevent adding staff to the visitor list
-        if (member.id === 'staff-main') return;
-        
-        setActiveVisitors(prev => {
-          if (prev.find(m => m.id === member.id)) return prev;
-          return [...prev, {
-            id: member.id,
-            name: member.info.name,
-            avatar: member.info.avatar,
-            nationality: member.info.nationality
-          }];
-        });
-      });
-
-      channel.bind('pusher:member_removed', (member: any) => {
-        setActiveVisitors(prev => prev.filter(m => m.id !== member.id));
-      });
+    } catch (err) {
+      console.error('Pusher connection error:', err);
     }
 
     return () => {
-      if (pusherClient) pusherClient.unsubscribe('presence-visitors');
+      try {
+        if (pusherClient) pusherClient.unsubscribe('presence-visitors');
+      } catch (e) {}
     };
   }, [userRole]);
 

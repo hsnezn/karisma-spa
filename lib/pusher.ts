@@ -29,10 +29,14 @@ export const pusherClient = (typeof window !== 'undefined' && key && cluster)
     })
   : null;
 
-// Helper to update auth params
+// Helper to update auth params - simplified for resilience
 export const updatePusherAuth = (role: 'user' | 'operator', userId: string) => {
-  if (pusherClient) {
-    (pusherClient.config as any).auth.params.role = role;
-    (pusherClient.config as any).auth.params.user_id = userId;
+  try {
+    if (pusherClient && (pusherClient as any).config && (pusherClient as any).config.auth) {
+      (pusherClient.config as any).auth.params.role = role;
+      (pusherClient.config as any).auth.params.user_id = userId;
+    }
+  } catch (e) {
+    console.error('Pusher auth update failed:', e);
   }
 };
