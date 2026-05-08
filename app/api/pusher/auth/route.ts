@@ -11,12 +11,13 @@ export async function POST(req: Request) {
     return new Response('Missing socket_id or channel_name', { status: 400 });
   }
 
-  // Check if this is a staff member based on a custom header or param
-  // For now, we'll check if the name 'staff_admin' is passed or use a simple logic
+  // Check if this is a staff member or a visitor with a persistent ID
   const bodyParams = Object.fromEntries(params.entries());
   const isStaff = bodyParams.role === 'operator';
+  const providedUserId = bodyParams.user_id;
   
-  const userId = isStaff ? 'staff-main' : `user-${Math.random().toString(36).substr(2, 9)}`;
+  // Use provided ID if available, otherwise fallback to staff or new random
+  const userId = providedUserId || (isStaff ? 'staff-main' : `user-${Math.random().toString(36).substr(2, 9)}`);
   
   // For demonstration, assign a random nationality
   const nationalities = ['Japan', 'Philippines'] as const;

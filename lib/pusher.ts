@@ -15,16 +15,17 @@ export const pusherClient = typeof window !== 'undefined'
       authEndpoint: '/api/pusher/auth',
       auth: {
         params: {
-          // This will be updated dynamically in the component
-          role: 'user'
+          role: 'user',
+          user_id: ''
         }
       }
     })
   : null;
 
 // Helper to update auth params
-export const updatePusherAuth = (role: 'user' | 'operator') => {
+export const updatePusherAuth = (role: 'user' | 'operator', userId: string) => {
   if (pusherClient) {
     (pusherClient.config as any).auth.params.role = role;
+    (pusherClient.config as any).auth.params.user_id = userId;
   }
 };

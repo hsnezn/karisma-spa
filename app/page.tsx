@@ -30,8 +30,15 @@ export default function Home() {
   useEffect(() => {
     if (!pusherClient) return;
 
-    // Update auth role before subscribing
-    updatePusherAuth(userRole || 'user');
+    // Get or Create Persistent Visitor ID
+    let vId = localStorage.getItem('karisma_visitor_id');
+    if (!vId) {
+      vId = `user-${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('karisma_visitor_id', vId);
+    }
+
+    // Update auth role and ID before subscribing
+    updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
 
     const channel = pusherClient.subscribe('presence-visitors');
 

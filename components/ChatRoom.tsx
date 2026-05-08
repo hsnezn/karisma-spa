@@ -18,16 +18,7 @@ interface ChatRoomProps {
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
   const isSupport = user.id === 'staff-main';
-  const [messages, setMessages] = useState<Message[]>([
-    { 
-      id: '1', 
-      text: isSupport 
-        ? "Welcome to Karisma Bliss! How can we help you today?" 
-        : `Hello! I'm ${user.name}. I'd like to book a massage.`, 
-      sender: isSupport ? 'operator' : 'user', 
-      timestamp: new Date() 
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
 
   // REAL-TIME CHAT (Pusher)
@@ -67,7 +58,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
     const newMessage: Message = {
       id: tempId,
       text: inputText,
-      sender: sender,
+      sender,
       timestamp: new Date(),
     };
     
