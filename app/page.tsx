@@ -26,18 +26,16 @@ export default function Home() {
   const [showStaffField, setShowStaffField] = useState(false);
   const [error, setError] = useState('');
 
-  // REAL-TIME VISITOR TRACKING (Pusher Presence)
+  // PERSISTENT VISITOR ID & PUSHER INIT
   useEffect(() => {
     if (!pusherClient) return;
 
-    // Get or Create Persistent Visitor ID
     let vId = localStorage.getItem('karisma_visitor_id');
     if (!vId) {
       vId = `user-${Math.random().toString(36).substr(2, 9)}`;
       localStorage.setItem('karisma_visitor_id', vId);
     }
 
-    // Update auth role and ID before subscribing
     updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
 
     const channel = pusherClient.subscribe('presence-visitors');
@@ -62,12 +60,18 @@ export default function Home() {
 
     if (userRole === 'operator') {
       channel.bind('pusher:member_added', (member: any) => {
-        setActiveVisitors(prev => [...prev, {
-          id: member.id,
-          name: member.info.name,
-          avatar: member.info.avatar,
-          nationality: member.info.nationality
-        }]);
+        // Prevent adding staff to the visitor list
+        if (member.id === 'staff-main') return;
+        
+        setActiveVisitors(prev => {
+          if (prev.find(m => m.id === member.id)) return prev;
+          return [...prev, {
+            id: member.id,
+            name: member.info.name,
+            avatar: member.info.avatar,
+            nationality: member.info.nationality
+          }];
+        });
       });
 
       channel.bind('pusher:member_removed', (member: any) => {

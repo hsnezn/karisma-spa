@@ -26,10 +26,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
     if (!pusherClient || !myId) return;
 
     // Unique channel for this specific conversation
-    // If I am guest, myId is random, user.id is 'staff-main'
-    // If I am staff, myId is 'staff-main', user.id is random
     // We always use the guest's ID as the unique channel name
-    const guestId = isSupport ? myId : user.id;
+    const guestId = isSupport ? user.id : myId;
     const channelName = `private-chat-${guestId}`;
     const channel = pusherClient.subscribe(channelName);
 
@@ -49,16 +47,16 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
   const handleSend = async () => {
     if (!inputText.trim() || !myId) return;
     
-    const guestId = isSupport ? myId : user.id;
+    const guestId = isSupport ? user.id : myId;
     const channelName = `private-chat-${guestId}`;
-    const sender = isSupport ? 'user' : 'operator';
+    const sender = isSupport ? 'operator' : 'user';
 
     // Optimistic UI update
     const tempId = Date.now().toString();
     const newMessage: Message = {
       id: tempId,
       text: inputText,
-      sender,
+      sender: sender,
       timestamp: new Date(),
     };
     

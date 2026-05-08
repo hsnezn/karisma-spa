@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   // Use provided ID if available, otherwise fallback to staff or new random
   const userId = providedUserId || (isStaff ? 'staff-main' : `user-${Math.random().toString(36).substr(2, 9)}`);
   
-  // For demonstration, assign a random nationality
+  // Nationality Logic (No bots)
   const nationalities = ['Japan', 'Philippines'] as const;
   const randomNat = nationalities[Math.floor(Math.random() * nationalities.length)];
   
