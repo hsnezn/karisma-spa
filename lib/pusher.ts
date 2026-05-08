@@ -1,17 +1,24 @@
 import PusherServer from 'pusher';
 import PusherClient from 'pusher-js';
 
-export const pusherServer = new PusherServer({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.NEXT_PUBLIC_PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-  useTLS: true,
-});
+const appId = process.env.PUSHER_APP_ID;
+const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+const secret = process.env.PUSHER_SECRET;
+const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
 
-export const pusherClient = typeof window !== 'undefined' 
-  ? new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+export const pusherServer = appId && key && secret && cluster
+  ? new PusherServer({
+      appId,
+      key,
+      secret,
+      cluster,
+      useTLS: true,
+    })
+  : null;
+
+export const pusherClient = typeof window !== 'undefined' && key && cluster
+  ? new PusherClient(key, {
+      cluster,
       authEndpoint: '/api/pusher/auth',
       auth: {
         params: {

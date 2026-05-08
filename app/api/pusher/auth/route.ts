@@ -1,6 +1,8 @@
 import { pusherServer } from '@/lib/pusher';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   const body = await req.text();
   const params = new URLSearchParams(body);
@@ -23,6 +25,10 @@ export async function POST(req: Request) {
   const nationalities = ['Japan', 'Philippines'] as const;
   const randomNat = nationalities[Math.floor(Math.random() * nationalities.length)];
   
+  if (!pusherServer) {
+    return new Response('Pusher server not initialized', { status: 500 });
+  }
+
   const presenceData = {
     user_id: userId,
     user_info: {

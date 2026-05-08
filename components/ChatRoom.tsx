@@ -125,12 +125,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
           <div 
             key={msg.id}
             className={`flex flex-col ${
-              (isSupport && msg.sender === 'user') || (!isSupport && msg.sender === 'operator') 
+              (isSupport && msg.sender === 'operator') || (!isSupport && msg.sender === 'user') 
                 ? 'items-end' : 'items-start'
             }`}
           >
             <div className={`max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${
-              (isSupport && msg.sender === 'user') || (!isSupport && msg.sender === 'operator')
+              (isSupport && msg.sender === 'operator') || (!isSupport && msg.sender === 'user')
                 ? 'bg-earth-dark text-white rounded-tr-none' 
                 : 'bg-white text-earth-dark rounded-tl-none border border-earth-light'
             }`}>
