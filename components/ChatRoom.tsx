@@ -47,16 +47,21 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
   const handleSend = async () => {
     if (!inputText.trim() || !myId) return;
     
+    // We always use the guest's ID as the unique channel name
     const guestId = isSupport ? user.id : myId;
     const channelName = `private-chat-${guestId}`;
-    const sender = isSupport ? 'operator' : 'user';
+    
+    // THE SENDER IS ME. 
+    // If I am looking at a Support user, I am a 'user'.
+    // If I am looking at a Visitor (as Support), I am an 'operator'.
+    const myRole = isSupport ? 'user' : 'operator';
 
     // Optimistic UI update
     const tempId = Date.now().toString();
     const newMessage: Message = {
       id: tempId,
       text: inputText,
-      sender: sender,
+      sender: myRole,
       timestamp: new Date(),
     };
     
@@ -69,7 +74,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: inputText,
-          sender: sender,
+          sender: myRole,
           channelName
         }),
       });
@@ -125,12 +130,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
           <div 
             key={msg.id}
             className={`flex flex-col ${
-              (isSupport && msg.sender === 'operator') || (!isSupport && msg.sender === 'user') 
+              (isSupport && msg.sender === 'user') || (!isSupport && msg.sender === 'operator') 
                 ? 'items-end' : 'items-start'
             }`}
           >
             <div className={`max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${
-              (isSupport && msg.sender === 'operator') || (!isSupport && msg.sender === 'user')
+              (isSupport && msg.sender === 'user') || (!isSupport && msg.sender === 'operator')
                 ? 'bg-earth-dark text-white rounded-tr-none' 
                 : 'bg-white text-earth-dark rounded-tl-none border border-earth-light'
             }`}>
