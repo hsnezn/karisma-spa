@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { pusherClient } from '@/lib/pusher';
 
 interface Message {
   id: string;
@@ -15,23 +16,69 @@ interface ChatRoomProps {
 }
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
+  const isSupport = user.id === 'staff-main';
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', text: `Hello! I'm ${user.name}. I'd like to book a massage.`, sender: 'user', timestamp: new Date() },
+    { 
+      id: '1', 
+      text: isSupport 
+        ? "Welcome to Karisma Bliss! How can we help you today?" 
+        : `Hello! I'm ${user.name}. I'd like to book a massage.`, 
+      sender: isSupport ? 'operator' : 'user', 
+      timestamp: new Date() 
+    },
   ]);
   const [inputText, setInputText] = useState('');
 
-  const handleSend = () => {
+  // REAL-TIME CHAT (Pusher)
+  useEffect(() => {
+    // Unique channel for this specific conversation
+    const channelName = `chat-${[user.id, 'staff-main'].sort().join('-')}`;
+    const channel = pusherClient.subscribe(channelName);
+
+    channel.bind('new-message', (data: Message) => {
+      // Avoid duplicates if the sender is also the one receiving the event
+      setMessages(prev => {
+        if (prev.find(m => m.id === data.id)) return prev;
+        return [...prev, { ...data, timestamp: new Date(data.timestamp) }];
+      });
+    });
+
+    return () => {
+      pusherClient.unsubscribe(channelName);
+    };
+  }, [user.id]);
+
+  const handleSend = async () => {
     if (!inputText.trim()) return;
     
+    const channelName = `chat-${[user.id, 'staff-main'].sort().join('-')}`;
+    const sender = isSupport ? 'operator' : 'user';
+
+    // Optimistic UI update
+    const tempId = Date.now().toString();
     const newMessage: Message = {
-      id: Date.now().toString(),
+      id: tempId,
       text: inputText,
-      sender: 'operator',
+      sender: sender,
       timestamp: new Date(),
     };
     
-    setMessages([...messages, newMessage]);
+    setMessages(prev => [...prev, newMessage]);
     setInputText('');
+
+    try {
+      await fetch('/api/pusher/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: inputText,
+          sender: sender,
+          channelName
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   return (
@@ -76,10 +123,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onClose }) => {
         {messages.map((msg) => (
           <div 
             key={msg.id}
-            className={`flex flex-col ${msg.sender === 'operator' ? 'items-end' : 'items-start'}`}
+            className={`flex flex-col ${
+              (isSupport && msg.sender === 'user') || (!isSupport && msg.sender === 'operator') 
+                ? 'items-end' : 'items-start'
+            }`}
           >
             <div className={`max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${
-              msg.sender === 'operator' 
+              (isSupport && msg.sender === 'user') || (!isSupport && msg.sender === 'operator')
                 ? 'bg-earth-dark text-white rounded-tr-none' 
                 : 'bg-white text-earth-dark rounded-tl-none border border-earth-light'
             }`}>

@@ -1,13 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
 import ChatRoom from '@/components/ChatRoom';
-
-const Radar = dynamic(() => import('@/components/Radar'), { 
-  ssr: false,
-  loading: () => <div className="h-[600px] w-full bg-earth-cream animate-pulse rounded-3xl flex items-center justify-center text-earth-dark font-bold italic">Loading Karisma Map...</div>
-});
 
 interface User {
   id: string;
@@ -18,6 +12,7 @@ interface User {
 export default function Home() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [activeVisitors, setActiveVisitors] = useState<User[]>([]);
   const [loginView, setLoginView] = useState<'none' | 'user' | 'operator' | 'create-account'>('none');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<'user' | 'operator' | null>(null);
@@ -26,6 +21,19 @@ export default function Home() {
   const [inviteCode, setInviteCode] = useState('');
   const [showStaffField, setShowStaffField] = useState(false);
   const [error, setError] = useState('');
+
+  // Simulation for Visitor Tracking (SalesIQ style)
+  useEffect(() => {
+    if (userRole === 'operator') {
+      const dummyVisitors: User[] = [
+        { id: 'v1', name: 'John D.', avatar: '👤' },
+        { id: 'v2', name: 'Sarah M.', avatar: '👩' },
+        { id: 'v3', name: 'Guest 402', avatar: '🎭' },
+        { id: 'v4', name: 'Emma W.', avatar: '✨' },
+      ];
+      setActiveVisitors(dummyVisitors);
+    }
+  }, [userRole]);
 
   // PERSISTENT LOGIN EFFECT
   useEffect(() => {
@@ -39,18 +47,15 @@ export default function Home() {
     }
   }, []);
 
-  // Simulated User Database with LocalStorage Persistence
+  // Simulated User Database
   const [registeredUsers, setRegisteredUsers] = useState([
     { user: 'staff_admin', pass: 'karisma2026', role: 'operator' },
     { user: 'guest_user', pass: 'welcome', role: 'user' }
   ]);
 
-  // Handle persistence in useEffect to avoid Hydration Mismatch
   useEffect(() => {
     const saved = localStorage.getItem('karisma_users');
-    if (saved) {
-      setRegisteredUsers(JSON.parse(saved));
-    }
+    if (saved) setRegisteredUsers(JSON.parse(saved));
   }, []);
 
   useEffect(() => {
@@ -58,60 +63,42 @@ export default function Home() {
   }, [registeredUsers]);
 
   const handleLogin = (requestedRole: 'user' | 'operator') => {
-    // Find user by name (case-insensitive) and pass (case-sensitive)
     const user = registeredUsers.find(u => 
-      u.user.toLowerCase() === username.toLowerCase() && 
-      u.pass === password
+      u.user.toLowerCase() === username.toLowerCase() && u.pass === password
     );
 
     if (user) {
-      // Check if the role matches what portal they are in
       if (user.role === requestedRole) {
         setIsLoggedIn(true);
         setUserRole(user.role);
         setLoginView('none');
         setError('');
         if (user.role === 'operator') setShowDashboard(true);
-        // Save session
         localStorage.setItem('karisma_session', JSON.stringify({ user: user.user, role: user.role }));
       } else {
-        setError(`This account is registered as a ${user.role}. Please use the correct portal.`);
+        setError(`This account is registered as a ${user.role}.`);
       }
     } else {
-      setError(`Invalid username or password.`);
+      setError(`Invalid credentials.`);
     }
   };
 
   const handleCreateAccount = () => {
     if (!username || !password) {
-      setError('Please fill in all fields.');
+      setError('Fill in all fields.');
       return;
     }
-
     const STAFF_SECRET = "KARISMA-STAFF-2026";
     let role: 'user' | 'operator' = 'user';
-
-    if (showStaffField && inviteCode === STAFF_SECRET) {
-      role = 'operator';
-    } else if (showStaffField && inviteCode !== STAFF_SECRET) {
-      setError('Invalid Staff Invite Code.');
-      return;
-    }
-
-    if (registeredUsers.find(u => u.user === username)) {
-      setError('Username already exists.');
-      return;
-    }
+    if (showStaffField && inviteCode === STAFF_SECRET) role = 'operator';
+    else if (showStaffField) { setError('Invalid Staff Code.'); return; }
 
     const newUser = { user: username, pass: password, role };
     setRegisteredUsers([...registeredUsers, newUser]);
-    
     setIsLoggedIn(true);
     setUserRole(role);
     setLoginView('none');
     if (role === 'operator') setShowDashboard(true);
-    setError('');
-    // Save session
     localStorage.setItem('karisma_session', JSON.stringify({ user: username, role }));
   };
 
@@ -119,10 +106,6 @@ export default function Home() {
     setIsLoggedIn(false);
     setUserRole(null);
     setShowDashboard(false);
-    setUsername('');
-    setPassword('');
-    setInviteCode('');
-    setShowStaffField(false);
     localStorage.removeItem('karisma_session');
   };
 
@@ -140,31 +123,16 @@ export default function Home() {
           <div className="flex items-center gap-1 md:gap-4">
             {!isLoggedIn ? (
               <>
-                <button 
-                  onClick={() => { setLoginView('create-account'); setError(''); }}
-                  className="text-earth-dark text-[9px] md:text-sm font-bold px-1"
-                >
-                  Join
-                </button>
-                <button 
-                  onClick={() => { setLoginView('user'); setError(''); }}
-                  className="text-earth-dark text-[9px] md:text-sm font-bold border-earth-dark px-1.5 md:px-4 py-1 md:py-2 rounded-full"
-                >
-                  Login
-                </button>
-                <button 
-                  onClick={() => { setLoginView('operator'); setError(''); }}
-                  className="bg-earth-dark text-white px-2 md:px-6 py-1 md:py-2 rounded-full text-[9px] md:text-sm font-bold shadow-lg"
-                >
-                  Staff
-                </button>
+                <button onClick={() => setLoginView('create-account')} className="text-earth-dark text-[9px] md:text-sm font-bold px-1">Join</button>
+                <button onClick={() => setLoginView('user')} className="text-earth-dark text-[9px] md:text-sm font-bold px-1.5 md:px-4">Login</button>
+                <button onClick={() => setLoginView('operator')} className="bg-earth-dark text-white px-2 md:px-6 py-1 md:py-2 rounded-full text-[9px] md:text-sm font-bold">Staff</button>
               </>
             ) : (
               <div className="flex items-center gap-2 md:gap-4">
-                <span className="text-[9px] md:text-sm italic truncate max-w-[40px] md:max-w-none">Hi, {userRole === 'operator' ? 'Staff' : username}</span>
+                <span className="text-[9px] md:text-sm italic truncate max-w-[40px] md:max-w-none">Hi, {username}</span>
                 {userRole === 'operator' && (
                   <button onClick={() => setShowDashboard(!showDashboard)} className="text-[9px] md:text-sm font-bold underline bg-earth-cream px-1.5 py-1 rounded">
-                    {showDashboard ? 'Site' : 'Map'}
+                    {showDashboard ? 'Site' : 'Visitors'}
                   </button>
                 )}
                 <button onClick={handleLogout} className="text-earth-mid text-[9px] md:text-sm font-bold">Out</button>
@@ -176,56 +144,28 @@ export default function Home() {
 
       {/* Login Overlay */}
       {loginView !== 'none' && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-0 md:p-4">
-          <div className="bg-white w-full h-full md:h-auto md:max-w-md p-6 md:p-8 md:rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300 border border-earth-light overflow-y-auto">
-            <div className="flex justify-end md:hidden mb-4">
-              <button onClick={() => { setLoginView('none'); setShowStaffField(false); setInviteCode(''); }} className="p-2 text-earth-dark">✕</button>
-            </div>
-            <div className="text-center mb-6 md:mb-8">
-              <h3 className="text-xl md:text-2xl font-serif text-earth-dark mb-2">
-                {loginView === 'operator' ? 'Staff Portal' : 
-                 loginView === 'create-account' ? 'Create Your Account' : 'Welcome Back'}
-              </h3>
-              <p className="text-earth-mid text-xs md:text-sm italic">Experience the Karisma Bliss</p>
-            </div>
-            
-            <div className="space-y-3 md:space-y-4">
-              {loginView === 'operator' && (
-                <div className="p-3 bg-earth-cream rounded-xl border border-earth-light text-[10px] text-earth-mid italic text-center mb-2">
-                  Staff Admin: <span className="font-bold text-earth-dark">staff_admin</span> / <span className="font-bold text-earth-dark">karisma2026</span>
-                </div>
-              )}
-              {error && (
-                <div className="p-3 bg-red-100 text-red-700 text-[10px] md:text-xs rounded-xl border border-red-200 font-bold animate-pulse">
-                  {error}
-                </div>
-              )}
-              <div>
-                <label className="block text-[10px] md:text-xs font-black text-earth-dark uppercase mb-1">Username</label>
-                <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" className="w-full px-4 py-2.5 md:py-3 bg-earth-cream rounded-xl border-2 border-earth-light focus:ring-2 focus:ring-earth-dark outline-none text-earth-dark font-bold text-sm" />
-              </div>
-              <div>
-                <label className="block text-[10px] md:text-xs font-black text-earth-dark uppercase mb-1">Password</label>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-2.5 md:py-3 bg-earth-cream rounded-xl border-2 border-earth-light focus:ring-2 focus:ring-earth-dark outline-none text-earth-dark font-bold text-sm" />
-              </div>
-
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl border border-earth-light">
+            <h3 className="text-2xl font-serif text-earth-dark mb-6 text-center">
+              {loginView === 'operator' ? 'Staff Portal' : loginView === 'create-account' ? 'Join Karisma' : 'Welcome Back'}
+            </h3>
+            {error && <div className="p-3 bg-red-100 text-red-700 text-xs rounded-xl mb-4 text-center font-bold">{error}</div>}
+            <div className="space-y-4">
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" className="w-full px-4 py-3 bg-earth-cream rounded-xl border-2 border-earth-light outline-none" />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 bg-earth-cream rounded-xl border-2 border-earth-light outline-none" />
               {loginView === 'create-account' && (
-                <div className="pt-1 md:pt-2">
+                <div className="pt-2">
                   {!showStaffField ? (
-                    <button onClick={() => setShowStaffField(true)} className="text-[9px] md:text-[10px] text-earth-light hover:text-earth-dark transition-colors uppercase tracking-widest font-bold">Are you staff? Click here</button>
+                    <button onClick={() => setShowStaffField(true)} className="text-[10px] text-earth-light hover:text-earth-dark font-bold uppercase">Staff?</button>
                   ) : (
-                    <div className="animate-in slide-in-from-top-2 duration-300">
-                      <label className="block text-[10px] md:text-xs font-bold text-earth-dark uppercase mb-1">Staff Invite Code</label>
-                      <input type="text" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Enter secret code" className="w-full px-4 py-2.5 md:py-3 bg-earth-cream rounded-xl border-2 border-earth-light focus:ring-2 focus:ring-earth-dark outline-none text-earth-dark text-sm" />
-                    </div>
+                    <input type="text" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Staff Code" className="w-full px-4 py-3 bg-earth-cream rounded-xl border-2 border-earth-light outline-none mt-2" />
                   )}
                 </div>
               )}
-
-              <button onClick={() => { if (loginView === 'create-account') handleCreateAccount(); else handleLogin(loginView as 'user' | 'operator'); }} className="w-full bg-earth-dark text-white py-3 md:py-4 rounded-xl font-bold hover:bg-accent-brown transition-all mt-2 md:mt-4 uppercase tracking-widest text-xs md:text-base">
-                {loginView === 'create-account' ? 'Create Account' : 'Sign In'}
+              <button onClick={() => loginView === 'create-account' ? handleCreateAccount() : handleLogin(loginView as 'user' | 'operator')} className="w-full bg-earth-dark text-white py-4 rounded-xl font-bold uppercase">
+                {loginView === 'create-account' ? 'Create' : 'Sign In'}
               </button>
-              <button onClick={() => { setLoginView('none'); setShowStaffField(false); setInviteCode(''); }} className="w-full text-earth-mid text-xs md:text-sm hover:text-earth-dark transition-colors">Cancel</button>
+              <button onClick={() => setLoginView('none')} className="w-full text-earth-mid text-sm">Cancel</button>
             </div>
           </div>
         </div>
@@ -235,125 +175,79 @@ export default function Home() {
       <div className="pt-16 md:pt-20">
         {!showDashboard ? (
           <div className="relative">
-            {/* HERO SECTION - MATCHING IMAGE */}
-            <section className="relative h-[80vh] md:h-[90vh] flex flex-col items-center justify-center text-center px-4 overflow-hidden">
+            {/* HERO */}
+            <section className="relative h-[80vh] flex flex-col items-center justify-center text-center px-4 overflow-hidden">
               <div className="absolute inset-0 z-0">
                 <div className="absolute inset-0 bg-black/40 z-10" />
-                <img 
-                  src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=2070" 
-                  alt="Massage Hero" 
-                  className="w-full h-full object-cover grayscale-[20%]"
-                />
+                <img src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=2070" alt="Hero" className="w-full h-full object-cover grayscale-[20%]" />
               </div>
-              
-              <div className="relative z-20 text-white space-y-8 md:space-y-12">
-                <h1 className="text-4xl md:text-8xl font-serif leading-tight">
-                  Find your <span className="italic font-light">bliss</span>
-                </h1>
-                <button className="bg-transparent border border-white px-8 md:px-12 py-3 text-[10px] md:text-sm tracking-[0.2em] font-light hover:bg-white hover:text-earth-dark transition-all uppercase">
-                  Book Your Escape
-                </button>
+              <div className="relative z-20 text-white space-y-8">
+                <h1 className="text-4xl md:text-8xl font-serif">Find your <span className="italic font-light">bliss</span></h1>
+                <button className="border border-white px-8 md:px-12 py-3 text-[10px] md:text-sm tracking-widest font-light hover:bg-white hover:text-earth-dark transition-all uppercase">Book Your Escape</button>
               </div>
             </section>
 
-            {/* BEYOND BLISSED SECTION - MATCHING IMAGE */}
-            <section className="bg-earth-dark text-earth-cream py-16 md:py-24 px-6 md:px-20 grid md:grid-cols-2 gap-12 items-center overflow-hidden">
-              <div className="space-y-6 md:space-y-8 max-w-xl">
-                <h2 className="text-3xl md:text-5xl font-serif">
-                  Beyond <span className="italic font-light">Blissed</span>
-                </h2>
-                <p className="text-base md:text-lg leading-relaxed font-light opacity-90">
-                  At Karisma, we believe that physical and mental well-being go hand in hand. We don't just offer a brief escape from the daily grind; we offer great relaxation deep within. When you regularly make time for yourself, your bliss can bless every part of your life with more energy and peace at your own comfort place.
-                </p>
+            {/* BEYOND BLISSED */}
+            <section className="bg-earth-dark text-earth-cream py-16 px-6 md:px-20 grid md:grid-cols-2 gap-12 items-center">
+              <div className="space-y-6 max-w-xl">
+                <h2 className="text-3xl md:text-5xl font-serif">Beyond <span className="italic font-light">Blissed</span></h2>
+                <p className="opacity-90 leading-relaxed">At Karisma, we believe that physical and mental well-being go hand in hand. We offer great relaxation deep within at your own comfort place.</p>
               </div>
-              <div className="flex flex-col gap-4 relative">
-                <img 
-                  src="https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=800" 
-                  alt="Stones Massage" 
-                  className="rounded-sm shadow-2xl h-48 md:h-64 w-full object-cover"
-                />
-                <img 
-                  src="https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&q=80&w=800" 
-                  alt="Spa Flower" 
-                  className="rounded-sm shadow-2xl h-48 md:h-64 w-[80%] md:w-full object-cover self-end md:ml-12 md:-mt-12"
-                />
+              <div className="flex flex-col gap-4">
+                <img src="https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=800" className="rounded-sm shadow-2xl h-48 object-cover" alt="Spa" />
+                <img src="https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&q=80&w=800" className="rounded-sm shadow-2xl h-48 object-cover self-end -mt-12 w-[80%]" alt="Spa" />
               </div>
             </section>
 
-            {/* MENU SECTION - MATCHING IMAGE */}
-            <section className="bg-earth-light py-16 md:py-24 px-4 md:px-6 text-center">
-              <h2 className="text-3xl md:text-4xl font-serif text-earth-dark mb-10 md:mb-16">Blissful Karisma Menu</h2>
-              
-              <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+            {/* MENU */}
+            <section className="bg-earth-light py-16 px-4 text-center">
+              <h2 className="text-3xl md:text-4xl font-serif text-earth-dark mb-10">Blissful Karisma Menu</h2>
+              <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-4">
                 {[
-                  { name: 'Nuru Massage', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
-                  { name: 'Yoni Massage', img: 'https://images.unsplash.com/photo-1612110186545-798d9b96a40f?auto=format&fit=crop&q=80&w=400' },
-                  { name: 'Deep Relaxation', img: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=400' },
-                  { name: 'Best Massage', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
-                  { name: 'Combination', img: 'https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=400' }
+                  { name: 'Nuru', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
+                  { name: 'Yoni', img: 'https://images.unsplash.com/photo-1612110186545-798d9b96a40f?auto=format&fit=crop&q=80&w=400' },
+                  { name: 'Relaxation', img: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=400' },
+                  { name: 'Best', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
+                  { name: 'Combo', img: 'https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=400' }
                 ].map((item, i) => (
-                  <div key={i} className="relative aspect-square group cursor-pointer overflow-hidden shadow-xl border-2 md:border-4 border-white">
+                  <div key={i} className="relative aspect-square group cursor-pointer overflow-hidden border-4 border-white shadow-xl">
                     <img src={item.img} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                    <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
-                    <div className="absolute inset-0 flex items-center justify-center p-2">
-                      <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-widest text-center leading-tight drop-shadow-md">
-                        {item.name}
-                      </span>
+                    <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center p-2">
+                      <span className="text-white text-[10px] font-bold uppercase tracking-widest">{item.name}</span>
                     </div>
                   </div>
                 ))}
               </div>
-
-              <div className="mt-16 md:mt-24 space-y-8 md:space-y-12">
-                <h2 className="text-2xl md:text-5xl font-serif text-earth-dark underline underline-offset-8 decoration-earth-mid">
-                  Book Your Escape Now!<br />Connect With Us.
-                </h2>
-                
-                <div className="space-y-4 md:space-y-6 text-lg md:text-3xl font-black text-earth-dark">
-                  <p className="flex items-center justify-center gap-2 md:gap-3">
-                    <span className="text-earth-mid text-[9px] md:text-sm uppercase tracking-widest font-bold">Viber</span> 
-                    09104314293
-                  </p>
-                  <p className="flex items-center justify-center gap-2 md:gap-3">
-                    <span className="text-earth-mid text-[9px] md:text-sm uppercase tracking-widest font-bold">Whatsapp</span> 
-                    09104314293
-                  </p>
-                </div>
-              </div>
             </section>
           </div>
         ) : (
-          /* DASHBOARD VIEW */
-          <div className="max-w-6xl mx-auto py-8 md:py-12 px-4 md:px-6 animate-in fade-in zoom-in-95 duration-500">
-            <div className="mb-8 md:mb-12 flex flex-col md:flex-row justify-between items-start md:items-end border-b border-earth-light pb-6 gap-4">
-              <div>
-                <h2 className="text-2xl md:text-3xl font-serif text-earth-dark mb-1 md:mb-2 uppercase tracking-widest">Operator Radar</h2>
-                <p className="text-earth-mid text-xs md:text-sm italic font-light">Managing bliss across branches in real-time.</p>
-              </div>
-              <div className="text-left md:text-right w-full md:w-auto">
-                <p className="text-[8px] md:text-[10px] uppercase font-bold tracking-[0.2em] text-earth-light mb-1">Secret Staff Code</p>
-                <code className="bg-earth-dark text-white px-2 md:px-3 py-1 rounded text-[10px] md:text-xs">KARISMA-STAFF-2026</code>
-              </div>
+          /* DASHBOARD */
+          <div className="max-w-6xl mx-auto py-12 px-6">
+            <div className="mb-12 border-b border-earth-light pb-6">
+              <h2 className="text-3xl font-serif text-earth-dark uppercase tracking-widest">Visitor Tracking</h2>
+              <p className="text-earth-mid text-sm italic">Real-time visitor insights and engagement (SalesIQ style).</p>
             </div>
-
-            <div className="bg-white rounded-3xl p-2 md:p-4 shadow-2xl relative overflow-hidden border border-earth-light">
-              <div className="absolute top-4 right-4 md:top-8 md:right-8 z-50 flex items-center gap-2 bg-white/80 backdrop-blur px-2 md:px-3 py-1 rounded-full shadow-sm border border-earth-light">
-                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-emerald-500 rounded-full animate-pulse" />
-                <span className="text-earth-dark text-[8px] md:text-[10px] font-bold uppercase tracking-widest font-mono">Live Tracker</span>
+            <div className="bg-white rounded-3xl p-8 shadow-2xl border border-earth-light min-h-[500px]">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2 bg-earth-cream/50 px-3 py-1.5 rounded-full border border-earth-light">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-earth-dark text-[10px] font-bold uppercase tracking-widest">Live Visitors</span>
+                </div>
+                <div className="text-earth-mid text-[10px] font-bold uppercase">Active: {activeVisitors.length}</div>
               </div>
-              
-              <Radar onUserClick={(user) => setSelectedUser(user)} />
-              
-              <div className="mt-4 md:mt-8 grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                {[
-                  { label: 'Active Sessions', val: '12', color: 'text-earth-dark' },
-                  { label: 'Available Staff', val: '8', color: 'text-emerald-600' },
-                  { label: 'Pending Bookings', val: '5', color: 'text-amber-600' },
-                  { label: 'System Load', val: 'Optimal', color: 'text-blue-600' }
-                ].map((stat, i) => (
-                  <div key={i} className="bg-earth-cream/30 p-3 md:p-4 rounded-2xl border border-earth-light">
-                    <p className="text-earth-mid text-[8px] md:text-[10px] uppercase font-bold tracking-widest mb-1">{stat.label}</p>
-                    <p className={`text-lg md:text-2xl font-bold ${stat.color}`}>{stat.val}</p>
+              <div className="grid gap-4">
+                {activeVisitors.map(v => (
+                  <div key={v.id} className="bg-earth-cream/20 p-6 rounded-2xl border border-earth-light flex items-center justify-between group hover:bg-earth-cream/40 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-earth-dark text-white flex items-center justify-center text-xl shadow-lg">{v.avatar}</div>
+                      <div>
+                        <h4 className="font-serif text-lg text-earth-dark font-bold">{v.name}</h4>
+                        <div className="flex gap-2 text-[10px] font-bold text-earth-mid uppercase">
+                          <span className="text-emerald-500">Online</span> • <span>Home Page</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => setSelectedUser(v)} className="bg-earth-dark text-white px-6 py-2.5 rounded-full text-xs font-bold hover:bg-accent-brown transition-all">Chat</button>
                   </div>
                 ))}
               </div>
@@ -362,26 +256,27 @@ export default function Home() {
         )}
       </div>
 
-      {/* Chat Overlay */}
+      {/* Floating Chat (User Side) */}
+      {!showDashboard && !selectedUser && (
+        <div className="fixed bottom-6 right-6 z-[100] animate-bounce hover:animate-none">
+          <button onClick={() => setSelectedUser({ id: 'staff-main', name: 'Karisma Support', avatar: '🧘' })} className="bg-earth-dark text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform border-4 border-white flex items-center gap-2 group">
+            <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 whitespace-nowrap text-sm font-bold uppercase tracking-widest px-0 group-hover:px-2">Chat with us</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          </button>
+        </div>
+      )}
+
+      {/* Chat Room */}
       {selectedUser && (
         <ChatRoom user={selectedUser} onClose={() => setSelectedUser(null)} />
       )}
 
       {/* Footer */}
-      <footer className="bg-earth-dark text-earth-cream py-12 md:py-16">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-8 md:gap-12 text-center md:text-left">
-          <div className="flex flex-col items-center md:items-start">
-            <div className="text-xl md:text-2xl font-serif italic font-bold uppercase tracking-widest mb-2">Karisma</div>
-            <p className="text-[10px] md:text-xs opacity-60 max-w-xs font-light">Physical and mental well-being for your home & hotel massage needs.</p>
-          </div>
-          <div className="flex gap-6 md:gap-12 text-[8px] md:text-[10px] uppercase tracking-[0.2em] font-bold opacity-80">
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Connect</a>
-          </div>
-          <div className="text-[8px] md:text-[10px] opacity-40 uppercase tracking-widest">
-            © 2026 Karisma Massage Services.
-          </div>
+      <footer className="bg-earth-dark text-earth-cream py-16 text-center">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-2xl font-serif italic font-bold uppercase tracking-widest mb-4">Karisma</div>
+          <p className="text-xs opacity-60 mb-8 max-w-md mx-auto">Physical and mental well-being for your home & hotel massage needs.</p>
+          <div className="text-[10px] opacity-40 uppercase tracking-widest">© 2026 Karisma Massage Services.</div>
         </div>
       </footer>
     </main>
