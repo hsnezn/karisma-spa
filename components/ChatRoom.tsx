@@ -14,72 +14,108 @@ interface ChatRoomProps {
   user: { id: string; name: string; avatar: string; nationality?: string };
   myId: string;
   onClose: () => void;
+  initialMessages: Message[];
+  onNewMessage: (msg: Message) => void;
 }
 
-const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
+const nationalityFlagSrc = (nationality?: string) => {
+  if (nationality === 'Japan') return '/icons/country-jp.png';
+  if (nationality === 'Philippines') return '/icons/country-ph.png';
+  return null;
+};
+
+const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose, initialMessages, onNewMessage }) => {
   const isSupport = user.id === 'staff-main';
-  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const messagesRef = React.useRef<Message[]>(initialMessages);
+  const onNewMessageRef = React.useRef(onNewMessage);
+
+  // Keep refs in sync with current props
+  useEffect(() => {
+    messagesRef.current = initialMessages;
+  }, [initialMessages]);
+
+  useEffect(() => {
+    onNewMessageRef.current = onNewMessage;
+  }, [onNewMessage]);
 
   // REAL-TIME CHAT (Pusher)
   useEffect(() => {
     if (!pusherClient || !myId) return;
 
-    // Unique channel for this specific conversation
-    // We always use the guest's ID as the unique channel name
-    const guestId = isSupport ? user.id : myId;
+    // The channel ID must always be the Visitor's ID
+    const guestId = myId === 'staff-main' ? user.id : myId;
     const channelName = `private-chat-${guestId}`;
+    
+    console.log('[ChatRoom] Subscribing to:', channelName, 'My ID:', myId);
     const channel = pusherClient.subscribe(channelName);
 
-    channel.bind('new-message', (data: Message) => {
-      // Avoid duplicates if the sender is also the one receiving the event
-      setMessages(prev => {
-        if (prev.find(m => m.id === data.id)) return prev;
-        return [...prev, { ...data, timestamp: new Date(data.timestamp) }];
-      });
-    });
+    const onIncoming = (data: any) => {
+      console.log('[ChatRoom] Received message:', data);
+      const msg: Message = { 
+        id: data.id,
+        text: data.text,
+        sender: data.sender,
+        timestamp: new Date(data.timestamp) 
+      };
+      
+      // Use ref to check for duplicates without triggering resubscription
+      if (!messagesRef.current.some(m => m.id === msg.id)) {
+        onNewMessageRef.current(msg);
+      }
+    };
+
+    channel.bind('new-message', onIncoming);
 
     return () => {
-      if (pusherClient) pusherClient.unsubscribe(channelName);
+      if (pusherClient) {
+        console.log('[ChatRoom] Unsubscribing from:', channelName);
+        channel.unbind('new-message', onIncoming);
+        pusherClient.unsubscribe(channelName);
+      }
     };
-  }, [user.id, myId]);
+  }, [user.id, myId]); // Stable dependencies
 
   const handleSend = async () => {
     if (!inputText.trim() || !myId) return;
     
-    // We always use the guest's ID as the unique channel name
-    const guestId = isSupport ? user.id : myId;
+    const guestId = myId === 'staff-main' ? user.id : myId;
     const channelName = `private-chat-${guestId}`;
-    
-    // THE SENDER IS ME. 
-    // If I am looking at a Support user, I am a 'user'.
-    // If I am looking at a Visitor (as Support), I am an 'operator'.
-    const myRole = isSupport ? 'user' : 'operator';
+    const myRole = myId === 'staff-main' ? 'operator' : 'user';
+
+    const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Optimistic UI update
-    const tempId = Date.now().toString();
     const newMessage: Message = {
-      id: tempId,
+      id: messageId,
       text: inputText,
       sender: myRole,
       timestamp: new Date(),
     };
     
-    setMessages(prev => [...prev, newMessage]);
+    onNewMessageRef.current(newMessage);
+    const currentInput = inputText;
     setInputText('');
 
+    console.log('[ChatRoom] Sending to:', channelName, 'Message:', currentInput);
+
     try {
-      await fetch('/api/pusher/message', {
+      const response = await fetch('/api/pusher/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: inputText,
+          id: messageId,
+          text: currentInput,
           sender: myRole,
-          channelName
+          channelName,
+          guestId
         }),
       });
+      if (!response.ok) {
+        console.error('[ChatRoom] Server error:', await response.text());
+      }
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('[ChatRoom] Network error:', error);
     }
   };
 
@@ -89,7 +125,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
       style={{ height: '100dvh' }}
     >
       {/* Header */}
-      <div className="safe-top p-4 md:p-6 border-b border-earth-light bg-earth-dark text-white flex items-center justify-between shrink-0">
+      <div className="safe-top p-3 md:p-6 border-b border-earth-light bg-earth-dark text-white flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <button 
             onClick={onClose}
@@ -97,18 +133,25 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </button>
-          <div className="bg-white/10 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-xl md:text-2xl shadow-inner">
-            {user.avatar}
+          <div className="bg-white/10 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center shadow-inner overflow-hidden">
+            <img src={user.avatar} alt="" className="w-full h-full object-cover" />
           </div>
           <div>
             <h3 className="font-serif text-lg md:text-xl font-bold leading-tight">
-              {user.name} {user.nationality === 'Japan' ? '🇯🇵' : user.nationality === 'Philippines' ? '🇵🇭' : ''}
+              {user.name}
             </h3>
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
               <p className="text-[10px] md:text-xs text-earth-cream/70 uppercase tracking-widest font-bold">
-                Live {user.nationality || 'Visitor'}
+                Live
               </p>
+              {nationalityFlagSrc(user.nationality) && (
+                <img
+                  src={nationalityFlagSrc(user.nationality) as string}
+                  alt={user.nationality}
+                  className="w-4 h-4 md:w-5 md:h-5"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -121,12 +164,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-earth-cream/20">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 bg-earth-cream/20">
         <div className="text-center py-4">
           <span className="text-[10px] uppercase tracking-[0.2em] text-earth-mid font-bold opacity-40">Today</span>
         </div>
         
-        {messages.map((msg) => (
+        {initialMessages.map((msg) => (
           <div 
             key={msg.id}
             className={`flex flex-col ${
@@ -149,25 +192,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose }) => {
       </div>
 
       {/* Input */}
-      <div className="safe-bottom p-4 md:p-6 border-t border-earth-light bg-white shrink-0">
+      <div className="safe-bottom p-3 md:p-6 border-t border-earth-light bg-white shrink-0">
         <div className="flex gap-3 items-center">
           <div className="flex-1 relative">
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Type your message..."
-              className="w-full pl-4 pr-12 py-3.5 bg-earth-cream/40 border-2 border-transparent focus:border-earth-dark rounded-2xl outline-none text-earth-dark text-sm md:text-base transition-all font-medium"
+              className="w-full pl-4 pr-4 py-3 bg-earth-cream/40 border-2 border-transparent focus:border-earth-dark rounded-2xl outline-none text-earth-dark text-sm md:text-base transition-all font-medium"
             />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex gap-2">
-              <span className="text-xl grayscale opacity-30 cursor-pointer hover:grayscale-0 hover:opacity-100 transition-all">😊</span>
-            </div>
           </div>
           <button
             onClick={handleSend}
             disabled={!inputText.trim()}
-            className="bg-earth-dark text-white p-3.5 rounded-2xl hover:bg-accent-brown disabled:opacity-30 disabled:hover:bg-earth-dark transition-all shadow-lg active:scale-90"
+            className="bg-earth-dark text-white p-3 rounded-2xl hover:bg-accent-brown disabled:opacity-30 disabled:hover:bg-earth-dark transition-all shadow-lg active:scale-90"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
           </button>

@@ -29,15 +29,20 @@ export async function POST(req: Request) {
     return new Response('Pusher server not initialized', { status: 500 });
   }
 
-  const presenceData = {
-    user_id: userId,
-    user_info: {
-      name: isStaff ? 'Karisma Support' : `Visitor-${userId.slice(-4)}`,
-      avatar: isStaff ? '🧘' : '👤',
-      nationality: isStaff ? 'Philippines' : randomNat
-    },
-  };
+  if (channelName.startsWith('presence-')) {
+    const presenceData = {
+      user_id: userId,
+      user_info: {
+        name: isStaff ? 'Karisma Support' : `Visitor-${userId.slice(-4)}`,
+        avatar: isStaff ? '/icons/avatar-staff.png' : '/icons/avatar-user.png',
+        nationality: isStaff ? 'Philippines' : randomNat,
+      },
+    };
 
-  const authResponse = pusherServer.authorizeChannel(socketId, channelName, presenceData);
+    const authResponse = pusherServer.authorizeChannel(socketId, channelName, presenceData);
+    return NextResponse.json(authResponse);
+  }
+
+  const authResponse = pusherServer.authorizeChannel(socketId, channelName);
   return NextResponse.json(authResponse);
 }

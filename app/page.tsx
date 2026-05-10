@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ChatRoom from '@/components/ChatRoom';
 import { pusherClient, updatePusherAuth } from '@/lib/pusher';
 
@@ -11,11 +11,47 @@ interface User {
   nationality?: 'Japan' | 'Philippines';
 }
 
+interface Message {
+  id: string;
+  text: string;
+  sender: 'user' | 'operator';
+  timestamp: Date;
+}
+
+const nationalityFlagSrc = (nationality: 'All' | 'Japan' | 'Philippines') => {
+  if (nationality === 'Japan') return '/icons/country-jp.png';
+  if (nationality === 'Philippines') return '/icons/country-ph.png';
+  return '/icons/country-all.png';
+};
+
 export default function Home() {
   const [myId, setMyId] = useState<string | null>(null);
+  const [persistentVId, setPersistentVId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>({});
   const [showDashboard, setShowDashboard] = useState(false);
+
+  const handleNewMessage = useCallback((userId: string, msg: Message) => {
+    setChatHistory(prev => {
+      const existing = prev[userId] || [];
+      if (existing.some(m => m.id === msg.id)) return prev;
+      return {
+        ...prev,
+        [userId]: [...existing, msg],
+      };
+    });
+  }, []);
   const [activeVisitors, setActiveVisitors] = useState<User[]>([]);
+  const activeVisitorsRef = React.useRef<User[]>([]);
+  const selectedUserRef = React.useRef<User | null>(null);
+
+  useEffect(() => {
+    activeVisitorsRef.current = activeVisitors;
+  }, [activeVisitors]);
+
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
   const [selectedNationality, setSelectedNationality] = useState<'All' | 'Japan' | 'Philippines'>('All');
   const [loginView, setLoginView] = useState<'none' | 'user' | 'operator' | 'create-account'>('none');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -32,19 +68,20 @@ export default function Home() {
       if (!pusherClient) return;
 
       let vId = localStorage.getItem('karisma_visitor_id');
-      if (!vId) {
-        vId = `user-${Math.random().toString(36).substr(2, 9)}`;
-        localStorage.setItem('karisma_visitor_id', vId);
-      }
+    if (!vId) {
+      vId = `user-${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('karisma_visitor_id', vId);
+    }
+    setPersistentVId(vId);
 
-      // Update auth role and ID before subscribing
+    // Update auth role and ID before subscribing
       if (typeof updatePusherAuth === 'function') {
         updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
       }
 
       const channel = pusherClient.subscribe('presence-visitors');
 
-      channel.bind('pusher:subscription_succeeded', (members: any) => {
+      const onSucceeded = (members: any) => {
         setMyId(members.myID);
         if (userRole === 'operator') {
           const membersList: User[] = [];
@@ -60,25 +97,56 @@ export default function Home() {
           });
           setActiveVisitors(membersList);
         }
-      });
+      };
+
+      const onMemberAdded = (member: any) => {
+        if (member.id === 'staff-main') return;
+        setActiveVisitors(prev => {
+          if (prev.find(m => m.id === member.id)) return prev;
+          return [...prev, {
+            id: member.id,
+            name: member.info.name,
+            avatar: member.info.avatar,
+            nationality: member.info.nationality
+          }];
+        });
+      };
+
+      const onMemberRemoved = (member: any) => {
+        setActiveVisitors(prev => prev.filter(m => m.id !== member.id));
+      };
+
+      channel.bind('pusher:subscription_succeeded', onSucceeded);
 
       if (userRole === 'operator') {
-        channel.bind('pusher:member_added', (member: any) => {
-          if (member.id === 'staff-main') return;
-          setActiveVisitors(prev => {
-            if (prev.find(m => m.id === member.id)) return prev;
-            return [...prev, {
-              id: member.id,
-              name: member.info.name,
-              avatar: member.info.avatar,
-              nationality: member.info.nationality
-            }];
-          });
-        });
+        channel.bind('pusher:member_added', onMemberAdded);
+        channel.bind('pusher:member_removed', onMemberRemoved);
 
-        channel.bind('pusher:member_removed', (member: any) => {
-          setActiveVisitors(prev => prev.filter(m => m.id !== member.id));
-        });
+        const operatorChannel = pusherClient.subscribe('private-operator');
+        const onOperatorMessage = (data: any) => {
+          if (!data || typeof data.guestId !== 'string' || !data.guestId) return;
+          if (typeof data.id !== 'string' || typeof data.text !== 'string' || typeof data.sender !== 'string') return;
+
+          const msg: Message = {
+            id: data.id,
+            text: data.text,
+            sender: data.sender,
+            timestamp: new Date(data.timestamp),
+          };
+
+          handleNewMessage(data.guestId, msg);
+
+          if (!selectedUserRef.current) {
+            const visitor = activeVisitorsRef.current.find(v => v.id === data.guestId) || {
+              id: data.guestId,
+              name: `Visitor-${data.guestId.slice(-4)}`,
+              avatar: '/icons/avatar-user.png',
+            };
+            setSelectedUser(visitor);
+          }
+        };
+
+        operatorChannel.bind('new-message', onOperatorMessage);
       }
     } catch (err) {
       console.error('Pusher connection error:', err);
@@ -86,7 +154,21 @@ export default function Home() {
 
     return () => {
       try {
-        if (pusherClient) pusherClient.unsubscribe('presence-visitors');
+        if (pusherClient) {
+          const channel = pusherClient.channel('presence-visitors');
+          if (channel) {
+            channel.unbind('pusher:subscription_succeeded');
+            channel.unbind('pusher:member_added');
+            channel.unbind('pusher:member_removed');
+          }
+          pusherClient.unsubscribe('presence-visitors');
+
+          const operatorChannel = pusherClient.channel('private-operator');
+          if (operatorChannel) {
+            operatorChannel.unbind('new-message');
+          }
+          pusherClient.unsubscribe('private-operator');
+        }
       } catch (e) {}
     };
   }, [userRole]);
@@ -237,19 +319,19 @@ export default function Home() {
         {!showDashboard ? (
           <div className="relative">
             {/* HERO */}
-            <section className="relative h-[80vh] flex flex-col items-center justify-center text-center px-4 overflow-hidden">
+            <section className="relative h-[72vh] md:h-[80vh] flex flex-col items-center justify-center text-center px-4 overflow-hidden">
               <div className="absolute inset-0 z-0">
                 <div className="absolute inset-0 bg-black/40 z-10" />
                 <img src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=2070" alt="Hero" className="w-full h-full object-cover grayscale-[20%]" />
               </div>
               <div className="relative z-20 text-white space-y-8">
-                <h1 className="text-4xl md:text-8xl font-serif">Find your <span className="italic font-light">bliss</span></h1>
-                <button className="border border-white px-8 md:px-12 py-3 text-[10px] md:text-sm tracking-widest font-light hover:bg-white hover:text-earth-dark transition-all uppercase">Book Your Escape</button>
+                <h1 className="text-4xl md:text-8xl font-serif leading-tight">Find your <span className="italic font-light">bliss</span></h1>
+                <button className="border border-white px-8 md:px-12 py-3.5 text-[10px] md:text-sm tracking-widest font-light hover:bg-white hover:text-earth-dark transition-all uppercase">Book Your Escape</button>
               </div>
             </section>
 
             {/* BEYOND BLISSED */}
-            <section className="bg-earth-dark text-earth-cream py-16 px-6 md:px-20 grid md:grid-cols-2 gap-12 items-center">
+            <section className="bg-earth-dark text-earth-cream py-14 md:py-16 px-5 md:px-20 grid md:grid-cols-2 gap-10 md:gap-12 items-center">
               <div className="space-y-6 max-w-xl">
                 <h2 className="text-3xl md:text-5xl font-serif">Beyond <span className="italic font-light">Blissed</span></h2>
                 <p className="opacity-90 leading-relaxed">At Karisma, we believe that physical and mental well-being go hand in hand. We offer great relaxation deep within at your own comfort place.</p>
@@ -261,7 +343,7 @@ export default function Home() {
             </section>
 
             {/* MENU */}
-            <section className="bg-earth-light py-16 px-4 text-center">
+            <section className="bg-earth-light py-14 md:py-16 px-4 text-center">
               <h2 className="text-3xl md:text-4xl font-serif text-earth-dark mb-10">Blissful Karisma Menu</h2>
               <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-4">
                 {[
@@ -283,14 +365,14 @@ export default function Home() {
           </div>
         ) : (
           /* DASHBOARD */
-          <div className="max-w-6xl mx-auto py-12 px-6">
-            <div className="mb-12 border-b border-earth-light pb-6">
-              <h2 className="text-3xl font-serif text-earth-dark uppercase tracking-widest">Visitor Tracking</h2>
-              <p className="text-earth-mid text-sm italic">Real-time visitor insights and engagement (SalesIQ style).</p>
+          <div className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
+            <div className="mb-6 md:mb-12 border-b border-earth-light pb-5 md:pb-6">
+              <h2 className="text-2xl md:text-3xl font-serif text-earth-dark uppercase tracking-widest">Visitor Tracking</h2>
+              <p className="text-earth-mid text-xs md:text-sm italic">Real-time visitor insights and engagement (SalesIQ style).</p>
             </div>
-            <div className="bg-white rounded-3xl p-8 shadow-2xl border border-earth-light min-h-[500px]">
-              <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                <div className="flex items-center gap-4">
+            <div className="bg-white rounded-3xl p-4 md:p-8 shadow-2xl border border-earth-light min-h-[500px]">
+              <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
+                <div className="flex items-center gap-3 md:gap-4 flex-wrap">
                   <div className="flex items-center gap-2 bg-earth-cream/50 px-3 py-1.5 rounded-full shadow-sm border border-earth-light">
                     <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                     <span className="text-earth-dark text-[10px] font-bold uppercase tracking-widest font-mono">Live Visitors</span>
@@ -300,46 +382,47 @@ export default function Home() {
                       <button
                         key={nat}
                         onClick={() => setSelectedNationality(nat)}
-                        className={`px-3 py-1 text-[10px] font-bold uppercase tracking-tighter rounded-md transition-all ${
+                        className={`px-2.5 py-1 rounded-md transition-all ${
                           selectedNationality === nat 
                             ? 'bg-earth-dark text-white shadow-md' 
                             : 'text-earth-mid hover:text-earth-dark'
                         }`}
                       >
-                        {nat === 'Japan' ? '🇯🇵 Japan' : nat === 'Philippines' ? '🇵🇭 PH' : '🌍 All'}
+                        <img src={nationalityFlagSrc(nat)} alt={nat} className="w-5 h-5" />
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="text-earth-mid text-[10px] uppercase font-bold tracking-widest">
-                  Showing {filteredVisitors.length} users from {selectedNationality}
+                <div className="text-earth-mid text-[10px] uppercase font-bold tracking-widest flex items-center gap-2">
+                  <span>Showing {filteredVisitors.length}</span>
+                  <img src={nationalityFlagSrc(selectedNationality)} alt={selectedNationality} className="w-4 h-4" />
                 </div>
               </div>
               
               <div className="grid gap-4">
                 {filteredVisitors.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-earth-mid italic">
-                    <p>No active visitors from {selectedNationality}...</p>
+                  <div className="flex flex-col items-center justify-center py-16 md:py-20 text-earth-mid italic">
+                    <p>No active visitors.</p>
                   </div>
                 ) : (
                   filteredVisitors.map((visitor) => (
-                    <div key={visitor.id} className="group bg-earth-cream/20 hover:bg-earth-cream/40 p-4 md:p-6 rounded-2xl border border-earth-light transition-all flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-earth-dark text-white flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform">
-                          {visitor.avatar}
+                    <div key={visitor.id} className="group bg-earth-cream/20 hover:bg-earth-cream/40 p-4 md:p-6 rounded-2xl border border-earth-light transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-12 h-12 rounded-full bg-earth-dark shadow-lg overflow-hidden shrink-0">
+                          <img src={visitor.avatar} alt="" className="w-full h-full object-cover" />
                         </div>
-                        <div>
-                          <h4 className="font-serif text-lg text-earth-dark font-bold">{visitor.name}</h4>
-                          <div className="flex gap-3 text-[10px] uppercase font-bold tracking-widest text-earth-mid">
+                        <div className="min-w-0">
+                          <h4 className="font-serif text-base md:text-lg text-earth-dark font-bold truncate">{visitor.name}</h4>
+                          <div className="flex gap-3 text-[10px] uppercase font-bold tracking-widest text-earth-mid items-center">
                             <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Online</span>
                             <span>•</span>
-                            <span className="text-earth-dark">{visitor.nationality === 'Japan' ? '🇯🇵 Japanese' : '🇵🇭 Filipino'}</span>
+                            <img src={nationalityFlagSrc(visitor.nationality || 'All')} alt={visitor.nationality || 'All'} className="w-4 h-4" />
                           </div>
                         </div>
                       </div>
                       <button 
                         onClick={() => setSelectedUser(visitor)}
-                        className="bg-earth-dark text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-md hover:bg-accent-brown transition-all active:scale-95"
+                        className="bg-earth-dark text-white px-6 py-3 rounded-full text-xs font-bold shadow-md hover:bg-accent-brown transition-all active:scale-95 w-full sm:w-auto"
                       >
                         Initiate Chat
                       </button>
@@ -368,22 +451,29 @@ export default function Home() {
 
       {/* Floating Chat (User Side) */}
       {!showDashboard && !selectedUser && (
-        <div className="fixed bottom-6 right-6 z-[100] animate-bounce hover:animate-none">
-          <button onClick={() => setSelectedUser({ id: 'staff-main', name: 'Karisma Support', avatar: '🧘' })} className="bg-earth-dark text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform border-4 border-white flex items-center gap-2 group">
-            <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 whitespace-nowrap text-sm font-bold uppercase tracking-widest px-0 group-hover:px-2">Chat with us</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        <div className="fixed bottom-5 right-5 z-[100]">
+          <button onClick={() => setSelectedUser({ id: 'staff-main', name: 'Karisma Support', avatar: '/icons/avatar-staff.png' })} className="bg-earth-dark text-white p-3.5 rounded-full shadow-2xl hover:scale-110 transition-transform border-4 border-white flex items-center gap-2 group">
+            <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 whitespace-nowrap text-xs md:text-sm font-bold uppercase tracking-widest px-0 group-hover:px-2">Chat</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
           </button>
         </div>
       )}
 
       {/* Chat Room */}
-      {selectedUser && (
-        <ChatRoom 
-          user={selectedUser} 
-          myId={myId || ''} 
-          onClose={() => setSelectedUser(null)} 
-        />
-      )}
+      {selectedUser && (() => {
+        const visitorId = myId || persistentVId || '';
+        const conversationId = userRole === 'operator' ? selectedUser.id : visitorId;
+        return (
+          <ChatRoom 
+            key={conversationId}
+            user={selectedUser} 
+            myId={userRole === 'operator' ? 'staff-main' : visitorId} 
+            onClose={() => setSelectedUser(null)}
+            initialMessages={chatHistory[conversationId] || []}
+            onNewMessage={(msg) => handleNewMessage(conversationId, msg)}
+          />
+        );
+      })()}
 
       {/* Footer */}
       <footer className="bg-earth-dark text-earth-cream py-16 text-center">
