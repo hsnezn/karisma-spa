@@ -38,12 +38,6 @@ html, body {
   width: 100%;
 }
 
-/* Ensure images don't break layout */
-img {
-  max-width: 100%;
-  height: auto;
-}
-
 /* Safe area utilities for modern mobile devices */
 .safe-top {
   padding-top: env(safe-area-inset-top);
