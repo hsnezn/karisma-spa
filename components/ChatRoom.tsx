@@ -18,6 +18,21 @@ interface ChatRoomProps {
   onNewMessage: (msg: Message) => void;
 }
 
+type IncomingMessagePayload = {
+  id: string;
+  text: string;
+  sender: Message['sender'];
+  timestamp?: string | number | Date;
+};
+
+const isIncomingMessagePayload = (data: unknown): data is IncomingMessagePayload => {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  if (typeof d.id !== 'string' || typeof d.text !== 'string') return false;
+  if (d.sender !== 'user' && d.sender !== 'operator') return false;
+  return true;
+};
+
 const nationalityFlagSrc = (nationality?: string) => {
   if (nationality === 'Japan') return '/icons/country-jp.png';
   if (nationality === 'Philippines') return '/icons/country-ph.png';
@@ -50,13 +65,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose, initialMessage
     console.log('[ChatRoom] Subscribing to:', channelName, 'My ID:', myId);
     const channel = pusherClient.subscribe(channelName);
 
-    const onIncoming = (data: any) => {
+    const onIncoming = (data: unknown) => {
       console.log('[ChatRoom] Received message:', data);
+      if (!isIncomingMessagePayload(data)) return;
       const msg: Message = { 
         id: data.id,
         text: data.text,
         sender: data.sender,
-        timestamp: new Date(data.timestamp) 
+        timestamp: new Date(data.timestamp || Date.now()) 
       };
       
       // Use ref to check for duplicates without triggering resubscription
@@ -121,8 +137,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose, initialMessage
 
   return (
     <div 
-      className="fixed inset-0 md:inset-y-0 md:right-0 md:left-auto md:w-full md:max-w-md bg-white flex flex-col z-[9999] shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right duration-300 h-[100dvh] md:h-screen overscroll-contain"
-      style={{ height: '100dvh' }}
+      className="fixed inset-0 md:inset-y-0 md:right-0 md:left-auto md:w-full md:max-w-md bg-white flex flex-col z-[10000] shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right duration-300"
     >
       {/* Header */}
       <div className="safe-top p-3 md:p-6 border-b border-earth-light bg-earth-dark text-white flex items-center justify-between shrink-0">
@@ -164,7 +179,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose, initialMessage
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 bg-earth-cream/20">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 bg-earth-cream/20">
         <div className="text-center py-4">
           <span className="text-[10px] uppercase tracking-[0.2em] text-earth-mid font-bold opacity-40">Today</span>
         </div>

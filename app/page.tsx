@@ -18,18 +18,100 @@ interface Message {
   timestamp: Date;
 }
 
+type StoredSession = { user: string; role: 'user' | 'operator' };
+type StoredUser = { user: string; pass: string; role: 'user' | 'operator' };
+
+const readSession = (): StoredSession | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('karisma_session');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const p = parsed as { user?: unknown; role?: unknown };
+    if (typeof p.user !== 'string') return null;
+    if (p.role !== 'user' && p.role !== 'operator') return null;
+    return { user: p.user, role: p.role };
+  } catch {
+    return null;
+  }
+};
+
+const defaultUsers: StoredUser[] = [
+  { user: 'staff_admin', pass: 'karisma2026', role: 'operator' },
+  { user: 'guest_user', pass: 'welcome', role: 'user' },
+];
+
+const readUsers = (): StoredUser[] => {
+  if (typeof window === 'undefined') return defaultUsers;
+  try {
+    const raw = localStorage.getItem('karisma_users');
+    if (!raw) return defaultUsers;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return defaultUsers;
+    const normalized: StoredUser[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue;
+      const u = item as { user?: unknown; pass?: unknown; role?: unknown };
+      if (typeof u.user !== 'string' || typeof u.pass !== 'string') continue;
+      if (u.role !== 'user' && u.role !== 'operator') continue;
+      normalized.push({ user: u.user, pass: u.pass, role: u.role });
+    }
+    return normalized.length ? normalized : defaultUsers;
+  } catch {
+    return defaultUsers;
+  }
+};
+
 const nationalityFlagSrc = (nationality: 'All' | 'Japan' | 'Philippines') => {
   if (nationality === 'Japan') return '/icons/country-jp.png';
   if (nationality === 'Philippines') return '/icons/country-ph.png';
   return '/icons/country-all.png';
 };
 
+type PresenceMemberInfo = { name: string; avatar: string; nationality?: User['nationality'] };
+type PresenceMember = { id: string; info: PresenceMemberInfo };
+type PresenceMembers = { myID: string; each: (cb: (member: PresenceMember) => void) => void };
+
+type OperatorMessagePayload = {
+  id: string;
+  text: string;
+  sender: Message['sender'];
+  timestamp: string | number | Date;
+  guestId: string;
+};
+
+type ChatMessagePayload = {
+  id: string;
+  text: string;
+  sender: Message['sender'];
+  timestamp?: string | number | Date;
+};
+
+const isOperatorMessagePayload = (data: unknown): data is OperatorMessagePayload => {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  if (typeof d.guestId !== 'string' || !d.guestId) return false;
+  if (typeof d.id !== 'string' || typeof d.text !== 'string') return false;
+  if (d.sender !== 'user' && d.sender !== 'operator') return false;
+  return true;
+};
+
+const isChatMessagePayload = (data: unknown): data is ChatMessagePayload => {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  if (typeof d.id !== 'string' || typeof d.text !== 'string') return false;
+  if (d.sender !== 'user' && d.sender !== 'operator') return false;
+  return true;
+};
+
 export default function Home() {
+  const session = readSession();
   const [myId, setMyId] = useState<string | null>(null);
   const [persistentVId, setPersistentVId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>({});
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(() => session?.role === 'operator');
 
   const handleNewMessage = useCallback((userId: string, msg: Message) => {
     setChatHistory(prev => {
@@ -54,9 +136,9 @@ export default function Home() {
   }, [selectedUser]);
   const [selectedNationality, setSelectedNationality] = useState<'All' | 'Japan' | 'Philippines'>('All');
   const [loginView, setLoginView] = useState<'none' | 'user' | 'operator' | 'create-account'>('none');
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState<'user' | 'operator' | null>(null);
-  const [username, setUsername] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(session));
+  const [userRole, setUserRole] = useState<'user' | 'operator' | null>(() => session?.role ?? null);
+  const [username, setUsername] = useState(() => session?.user ?? '');
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [showStaffField, setShowStaffField] = useState(false);
@@ -72,20 +154,23 @@ export default function Home() {
       vId = `user-${Math.random().toString(36).substr(2, 9)}`;
       localStorage.setItem('karisma_visitor_id', vId);
     }
-    setPersistentVId(vId);
+    const nextPersistentId = vId;
+    setTimeout(() => setPersistentVId(nextPersistentId), 0);
 
     // Update auth role and ID before subscribing
       if (typeof updatePusherAuth === 'function') {
         updatePusherAuth(userRole || 'user', userRole === 'operator' ? 'staff-main' : vId);
       }
 
+      pusherClient.unsubscribe('presence-visitors');
+      pusherClient.unsubscribe('private-operator');
       const channel = pusherClient.subscribe('presence-visitors');
 
-      const onSucceeded = (members: any) => {
+      const onSucceeded = (members: PresenceMembers) => {
         setMyId(members.myID);
         if (userRole === 'operator') {
           const membersList: User[] = [];
-          members.each((member: any) => {
+          members.each((member: PresenceMember) => {
             if (member.id !== 'staff-main') {
               membersList.push({
                 id: member.id,
@@ -99,7 +184,7 @@ export default function Home() {
         }
       };
 
-      const onMemberAdded = (member: any) => {
+      const onMemberAdded = (member: PresenceMember) => {
         if (member.id === 'staff-main') return;
         setActiveVisitors(prev => {
           if (prev.find(m => m.id === member.id)) return prev;
@@ -112,7 +197,7 @@ export default function Home() {
         });
       };
 
-      const onMemberRemoved = (member: any) => {
+      const onMemberRemoved = (member: PresenceMember) => {
         setActiveVisitors(prev => prev.filter(m => m.id !== member.id));
       };
 
@@ -123,15 +208,14 @@ export default function Home() {
         channel.bind('pusher:member_removed', onMemberRemoved);
 
         const operatorChannel = pusherClient.subscribe('private-operator');
-        const onOperatorMessage = (data: any) => {
-          if (!data || typeof data.guestId !== 'string' || !data.guestId) return;
-          if (typeof data.id !== 'string' || typeof data.text !== 'string' || typeof data.sender !== 'string') return;
+        const onOperatorMessage = (data: unknown) => {
+          if (!isOperatorMessagePayload(data)) return;
 
           const msg: Message = {
             id: data.id,
             text: data.text,
             sender: data.sender,
-            timestamp: new Date(data.timestamp),
+            timestamp: new Date(data.timestamp || Date.now()),
           };
 
           handleNewMessage(data.guestId, msg);
@@ -169,37 +253,53 @@ export default function Home() {
           }
           pusherClient.unsubscribe('private-operator');
         }
-      } catch (e) {}
+      } catch {}
     };
-  }, [userRole]);
+  }, [handleNewMessage, userRole]);
+
+  useEffect(() => {
+    if (!pusherClient) return;
+    if (userRole === 'operator') return;
+    if (selectedUser) return;
+
+    const visitorId = myId || persistentVId;
+    if (!visitorId) return;
+
+    const channelName = `private-chat-${visitorId}`;
+    const channel = pusherClient.subscribe(channelName);
+
+    const onIncoming = (data: unknown) => {
+      if (!isChatMessagePayload(data)) return;
+
+      const msg: Message = {
+        id: data.id,
+        text: data.text,
+        sender: data.sender,
+        timestamp: new Date(data.timestamp || Date.now()),
+      };
+
+      handleNewMessage(visitorId, msg);
+
+      if (data.sender === 'operator') {
+        setSelectedUser({ id: 'staff-main', name: 'Karisma Support', avatar: '/icons/avatar-staff.png' });
+      }
+    };
+
+    channel.bind('new-message', onIncoming);
+
+    return () => {
+      if (pusherClient) {
+        channel.unbind('new-message', onIncoming);
+        pusherClient.unsubscribe(channelName);
+      }
+    };
+  }, [handleNewMessage, myId, persistentVId, selectedUser, userRole]);
 
   // Filter visitors by selected nationality
   const filteredVisitors = activeVisitors.filter(v => 
     selectedNationality === 'All' || v.nationality === selectedNationality
   );
-
-  // PERSISTENT LOGIN EFFECT
-  useEffect(() => {
-    const savedUser = localStorage.getItem('karisma_session');
-    if (savedUser) {
-      const userData = JSON.parse(savedUser);
-      setIsLoggedIn(true);
-      setUserRole(userData.role);
-      setUsername(userData.user);
-      if (userData.role === 'operator') setShowDashboard(true);
-    }
-  }, []);
-
-  // Simulated User Database
-  const [registeredUsers, setRegisteredUsers] = useState([
-    { user: 'staff_admin', pass: 'karisma2026', role: 'operator' },
-    { user: 'guest_user', pass: 'welcome', role: 'user' }
-  ]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('karisma_users');
-    if (saved) setRegisteredUsers(JSON.parse(saved));
-  }, []);
+  const [registeredUsers, setRegisteredUsers] = useState<StoredUser[]>(() => readUsers());
 
   useEffect(() => {
     localStorage.setItem('karisma_users', JSON.stringify(registeredUsers));
@@ -255,7 +355,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-earth-cream text-earth-dark font-sans">
       {/* Navigation */}
-      <nav className="fixed w-full z-40 bg-white/95 backdrop-blur-md border-b border-earth-light">
+      <nav className="fixed top-0 left-0 w-full z-40 bg-white/95 backdrop-blur-md border-b border-earth-light">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 md:h-20 flex items-center justify-between">
           <div className="flex flex-col">
             <div className="text-base md:text-2xl font-serif italic text-earth-dark font-bold tracking-tight uppercase leading-none">
@@ -287,7 +387,7 @@ export default function Home() {
 
       {/* Login Overlay */}
       {loginView !== 'none' && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl border border-earth-light">
             <h3 className="text-2xl font-serif text-earth-dark mb-6 text-center">
               {loginView === 'operator' ? 'Staff Portal' : loginView === 'create-account' ? 'Join Karisma' : 'Welcome Back'}
