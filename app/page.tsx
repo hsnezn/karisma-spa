@@ -8,7 +8,18 @@ interface User {
   id: string;
   name: string;
   avatar: string;
-  nationality?: 'Japan' | 'Philippines';
+  nationality?: string;
+}
+
+interface VisitorSessionInfo {
+  id: string;
+  name: string;
+  avatar: string;
+  nationality?: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  isOnline: boolean;
+  totalMessages: number;
 }
 
 interface Message {
@@ -63,10 +74,44 @@ const readUsers = (): StoredUser[] => {
   }
 };
 
-const nationalityFlagSrc = (nationality: 'All' | 'Japan' | 'Philippines') => {
-  if (nationality === 'Japan') return '/icons/country-jp.png';
-  if (nationality === 'Philippines') return '/icons/country-ph.png';
-  return '/icons/country-all.png';
+const readVisitorSessions = (): Record<string, VisitorSessionInfo> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem('karisma_visitor_sessions');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const obj = parsed as Record<string, unknown>;
+    const normalized: Record<string, VisitorSessionInfo> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (!value || typeof value !== 'object') continue;
+      const v = value as Partial<VisitorSessionInfo>;
+      if (typeof v.id !== 'string' || v.id !== key) continue;
+      if (typeof v.name !== 'string' || typeof v.avatar !== 'string') continue;
+      if (typeof v.firstSeenAt !== 'number' || typeof v.lastSeenAt !== 'number') continue;
+      if (typeof v.isOnline !== 'boolean' || typeof v.totalMessages !== 'number') continue;
+      normalized[key] = {
+        id: v.id,
+        name: v.name,
+        avatar: v.avatar,
+        nationality: typeof v.nationality === 'string' ? v.nationality : undefined,
+        firstSeenAt: v.firstSeenAt,
+        lastSeenAt: v.lastSeenAt,
+        isOnline: v.isOnline,
+        totalMessages: v.totalMessages,
+      };
+    }
+    return normalized;
+  } catch {
+    return {};
+  }
+};
+
+const formatDuration = (ms: number) => {
+  const clamped = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(clamped / 60);
+  const seconds = clamped % 60;
+  return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
 };
 
 type PresenceMemberInfo = { name: string; avatar: string; nationality?: User['nationality'] };
@@ -106,12 +151,14 @@ const isChatMessagePayload = (data: unknown): data is ChatMessagePayload => {
 };
 
 export default function Home() {
-  const session = readSession();
   const [myId, setMyId] = useState<string | null>(null);
   const [persistentVId, setPersistentVId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>({});
-  const [showDashboard, setShowDashboard] = useState(() => session?.role === 'operator');
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [dashboardNow, setDashboardNow] = useState(0);
+  const [visitorSessions, setVisitorSessions] = useState<Record<string, VisitorSessionInfo>>({});
+  const visitorSessionsRef = React.useRef<Record<string, VisitorSessionInfo>>({});
 
   const handleNewMessage = useCallback((userId: string, msg: Message) => {
     setChatHistory(prev => {
@@ -132,17 +179,53 @@ export default function Home() {
   }, [activeVisitors]);
 
   useEffect(() => {
+    visitorSessionsRef.current = visitorSessions;
+  }, [visitorSessions]);
+
+  useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
-  const [selectedNationality, setSelectedNationality] = useState<'All' | 'Japan' | 'Philippines'>('All');
   const [loginView, setLoginView] = useState<'none' | 'user' | 'operator' | 'create-account'>('none');
-  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(session));
-  const [userRole, setUserRole] = useState<'user' | 'operator' | null>(() => session?.role ?? null);
-  const [username, setUsername] = useState(() => session?.user ?? '');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<'user' | 'operator' | null>(null);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [showStaffField, setShowStaffField] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const session = readSession();
+    if (!session) return;
+    setTimeout(() => {
+      setIsLoggedIn(true);
+      setUserRole(session.role);
+      setUsername(session.user);
+      setShowDashboard(session.role === 'operator');
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (userRole !== 'operator') return;
+    const loaded = readVisitorSessions();
+    setTimeout(() => setVisitorSessions(loaded), 0);
+  }, [userRole]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (userRole !== 'operator') return;
+    localStorage.setItem('karisma_visitor_sessions', JSON.stringify(visitorSessions));
+  }, [userRole, visitorSessions]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (userRole !== 'operator' || !showDashboard) return;
+    const tick = () => setDashboardNow(Date.now());
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [showDashboard, userRole]);
 
   // PERSISTENT VISITOR ID & PUSHER INIT
   useEffect(() => {
@@ -169,7 +252,9 @@ export default function Home() {
       const onSucceeded = (members: PresenceMembers) => {
         setMyId(members.myID);
         if (userRole === 'operator') {
+          const now = Date.now();
           const membersList: User[] = [];
+          const presentIds = new Set<string>();
           members.each((member: PresenceMember) => {
             if (member.id !== 'staff-main') {
               membersList.push({
@@ -178,14 +263,38 @@ export default function Home() {
                 avatar: member.info.avatar,
                 nationality: member.info.nationality
               });
+              presentIds.add(member.id);
             }
           });
           setActiveVisitors(membersList);
+          setVisitorSessions(prev => {
+            const merged: Record<string, VisitorSessionInfo> = {};
+            for (const [id, session] of Object.entries(prev)) {
+              merged[id] = presentIds.has(id)
+                ? { ...session, isOnline: true, lastSeenAt: now }
+                : { ...session, isOnline: false, lastSeenAt: session.isOnline ? now : session.lastSeenAt };
+            }
+            for (const visitor of membersList) {
+              const existing = merged[visitor.id];
+              merged[visitor.id] = {
+                id: visitor.id,
+                name: visitor.name,
+                avatar: visitor.avatar,
+                nationality: visitor.nationality,
+                firstSeenAt: existing?.firstSeenAt ?? now,
+                lastSeenAt: now,
+                isOnline: true,
+                totalMessages: existing?.totalMessages ?? 0,
+              };
+            }
+            return merged;
+          });
         }
       };
 
       const onMemberAdded = (member: PresenceMember) => {
         if (member.id === 'staff-main') return;
+        const now = Date.now();
         setActiveVisitors(prev => {
           if (prev.find(m => m.id === member.id)) return prev;
           return [...prev, {
@@ -195,10 +304,35 @@ export default function Home() {
             nationality: member.info.nationality
           }];
         });
+        setVisitorSessions(prev => {
+          const existing = prev[member.id];
+          return {
+            ...prev,
+            [member.id]: {
+              id: member.id,
+              name: member.info.name,
+              avatar: member.info.avatar,
+              nationality: member.info.nationality,
+              firstSeenAt: existing?.firstSeenAt ?? now,
+              lastSeenAt: now,
+              isOnline: true,
+              totalMessages: existing?.totalMessages ?? 0,
+            },
+          };
+        });
       };
 
       const onMemberRemoved = (member: PresenceMember) => {
         setActiveVisitors(prev => prev.filter(m => m.id !== member.id));
+        const now = Date.now();
+        setVisitorSessions(prev => {
+          const existing = prev[member.id];
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [member.id]: { ...existing, isOnline: false, lastSeenAt: now },
+          };
+        });
       };
 
       channel.bind('pusher:subscription_succeeded', onSucceeded);
@@ -210,6 +344,7 @@ export default function Home() {
         const operatorChannel = pusherClient.subscribe('private-operator');
         const onOperatorMessage = (data: unknown) => {
           if (!isOperatorMessagePayload(data)) return;
+          const now = Date.now();
 
           const msg: Message = {
             id: data.id,
@@ -219,6 +354,24 @@ export default function Home() {
           };
 
           handleNewMessage(data.guestId, msg);
+          setVisitorSessions(prev => {
+            const existing = prev[data.guestId];
+            const fallback = activeVisitorsRef.current.find(v => v.id === data.guestId);
+            const baseName = fallback?.name || `Visitor-${data.guestId.slice(-4)}`;
+            const baseAvatar = fallback?.avatar || '/icons/avatar-user.png';
+            const baseNat = fallback?.nationality;
+            const next: VisitorSessionInfo = {
+              id: data.guestId,
+              name: existing?.name || baseName,
+              avatar: existing?.avatar || baseAvatar,
+              nationality: existing?.nationality || baseNat,
+              firstSeenAt: existing?.firstSeenAt ?? now,
+              lastSeenAt: now,
+              isOnline: existing?.isOnline ?? true,
+              totalMessages: (existing?.totalMessages ?? 0) + 1,
+            };
+            return { ...prev, [data.guestId]: next };
+          });
 
           if (!selectedUserRef.current) {
             const visitor = activeVisitorsRef.current.find(v => v.id === data.guestId) || {
@@ -295,15 +448,21 @@ export default function Home() {
     };
   }, [handleNewMessage, myId, persistentVId, selectedUser, userRole]);
 
-  // Filter visitors by selected nationality
-  const filteredVisitors = activeVisitors.filter(v => 
-    selectedNationality === 'All' || v.nationality === selectedNationality
-  );
-  const [registeredUsers, setRegisteredUsers] = useState<StoredUser[]>(() => readUsers());
+  const [registeredUsers, setRegisteredUsers] = useState<StoredUser[]>(defaultUsers);
+  const [usersLoaded, setUsersLoaded] = useState(false);
 
   useEffect(() => {
+    const users = readUsers();
+    setTimeout(() => {
+      setRegisteredUsers(users);
+      setUsersLoaded(true);
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    if (!usersLoaded) return;
     localStorage.setItem('karisma_users', JSON.stringify(registeredUsers));
-  }, [registeredUsers]);
+  }, [registeredUsers, usersLoaded]);
 
   const handleLogin = (requestedRole: 'user' | 'operator') => {
     const user = registeredUsers.find(u => 
@@ -352,13 +511,30 @@ export default function Home() {
     localStorage.removeItem('karisma_session');
   };
 
+  const dashboardSessions = userRole === 'operator' ? Object.values(visitorSessions) : [];
+  const totalVisitorsCount = userRole === 'operator' ? dashboardSessions.length : activeVisitors.length;
+  const liveChatsCount = userRole === 'operator'
+    ? dashboardSessions.filter(s => s.isOnline && (chatHistory[s.id]?.length || 0) > 0).length
+    : 0;
+  const avgTimeMs = userRole === 'operator' && dashboardSessions.length
+    ? Math.round(
+        dashboardSessions.reduce((sum, s) => {
+          const end = s.isOnline ? dashboardNow : s.lastSeenAt;
+          return sum + Math.max(0, end - s.firstSeenAt);
+        }, 0) / dashboardSessions.length
+      )
+    : 0;
+  const conversionPct = userRole === 'operator' && dashboardSessions.length
+    ? Math.round((dashboardSessions.filter(s => s.totalMessages > 0).length / dashboardSessions.length) * 100)
+    : 0;
+
   return (
-    <main className="min-h-screen bg-earth-cream text-earth-dark font-sans">
+    <main className="min-h-screen bg-earth-cream text-earth-dark">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 w-full z-40 bg-white/95 backdrop-blur-md border-b border-earth-light">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 md:h-20 flex items-center justify-between">
           <div className="flex flex-col">
-            <div className="text-base md:text-2xl font-serif italic text-earth-dark font-bold tracking-tight uppercase leading-none">
+            <div className="text-base md:text-2xl font-elegant italic text-earth-dark font-bold tracking-tight uppercase leading-none">
               Karisma
             </div>
             <span className="text-[7px] md:text-sm font-normal normal-case text-earth-mid">Home & Hotel Massage</span>
@@ -389,7 +565,7 @@ export default function Home() {
       {loginView !== 'none' && (
         <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-earth-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl border border-earth-light">
-            <h3 className="text-2xl font-serif text-earth-dark mb-6 text-center">
+            <h3 className="text-2xl font-elegant text-earth-dark mb-6 text-center">
               {loginView === 'operator' ? 'Staff Portal' : loginView === 'create-account' ? 'Join Karisma' : 'Welcome Back'}
             </h3>
             {error && <div className="p-3 bg-red-100 text-red-700 text-xs rounded-xl mb-4 text-center font-bold">{error}</div>}
@@ -421,11 +597,11 @@ export default function Home() {
             {/* HERO */}
             <section className="relative h-[72vh] md:h-[80vh] flex flex-col items-center justify-center text-center px-4 overflow-hidden">
               <div className="absolute inset-0 z-0">
-                <div className="absolute inset-0 bg-black/40 z-10" />
-                <img src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=2070" alt="Hero" className="w-full h-full object-cover grayscale-[20%]" />
+                <div className="absolute inset-0 bg-black/20 z-10" />
+                <img src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=2070" alt="Hero" className="w-full h-full object-cover opacity-90 anim-kenburns" />
               </div>
-              <div className="relative z-20 text-white space-y-8">
-                <h1 className="text-4xl md:text-8xl font-serif leading-tight">Find your <span className="italic font-light">bliss</span></h1>
+              <div className="relative z-20 text-white space-y-6 md:space-y-8">
+                <h1 className="text-3xl sm:text-4xl md:text-8xl font-elegant leading-tight">Find your <span className="italic font-light">bliss</span></h1>
                 <button className="border border-white px-8 md:px-12 py-3.5 text-[10px] md:text-sm tracking-widest font-light hover:bg-white hover:text-earth-dark transition-all uppercase">Book Your Escape</button>
               </div>
             </section>
@@ -433,18 +609,18 @@ export default function Home() {
             {/* BEYOND BLISSED */}
             <section className="bg-earth-dark text-earth-cream py-14 md:py-16 px-5 md:px-20 grid md:grid-cols-2 gap-10 md:gap-12 items-center">
               <div className="space-y-6 max-w-xl">
-                <h2 className="text-3xl md:text-5xl font-serif">Beyond <span className="italic font-light">Blissed</span></h2>
-                <p className="opacity-90 leading-relaxed">At Karisma, we believe that physical and mental well-being go hand in hand. We offer great relaxation deep within at your own comfort place.</p>
+                <h2 className="text-3xl md:text-5xl font-elegant">Beyond <span className="italic font-light">blissed</span></h2>
+                <p className="opacity-90 leading-relaxed text-justified">At Karisma, we believe that physical and mental well-being go hand in hand. We offer great relaxation deep within at your own comfort place.</p>
               </div>
               <div className="flex flex-col gap-4">
-                <img src="https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=800" className="rounded-sm shadow-2xl h-48 object-cover" alt="Spa" />
-                <img src="https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&q=80&w=800" className="rounded-sm shadow-2xl h-48 object-cover self-end -mt-12 w-[80%]" alt="Spa" />
+                <img src="https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=800" className="rounded-sm shadow-2xl h-48 object-cover anim-fade-up hover:scale-[1.02] transition-transform duration-700" alt="Spa" />
+                <img src="https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&q=80&w=800" className="rounded-sm shadow-2xl h-48 object-cover self-end -mt-12 w-[80%] anim-fade-up anim-delay-150 anim-float hover:scale-[1.02] transition-transform duration-700" alt="Spa" />
               </div>
             </section>
 
             {/* MENU */}
             <section className="bg-earth-light py-14 md:py-16 px-4 text-center">
-              <h2 className="text-3xl md:text-4xl font-serif text-earth-dark mb-10">Blissful Karisma Menu</h2>
+              <h2 className="text-3xl md:text-4xl font-elegant text-earth-dark mb-10">Blissful Karisma Menu</h2>
               <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-4">
                 {[
                   { name: 'Nuru', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
@@ -453,8 +629,10 @@ export default function Home() {
                   { name: 'Best', img: 'https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&fit=crop&q=80&w=400' },
                   { name: 'Combo', img: 'https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&q=80&w=400' }
                 ].map((item, i) => (
-                  <div key={i} className="relative aspect-square group cursor-pointer overflow-hidden border-4 border-white shadow-xl">
-                    <img src={item.img} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                  <div key={i} className={`relative aspect-square group cursor-pointer overflow-hidden border-4 border-white shadow-xl anim-fade-up ${
+                    i % 5 === 1 ? 'anim-delay-150' : i % 5 === 2 ? 'anim-delay-300' : i % 5 === 3 ? 'anim-delay-450' : i % 5 === 4 ? 'anim-delay-600' : ''
+                  }`}>
+                    <img src={item.img} alt={item.name} className="w-full h-full object-cover anim-kenburns group-hover:scale-110 group-hover:rotate-[0.5deg] transition-transform duration-700" />
                     <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center p-2">
                       <span className="text-white text-[10px] font-bold uppercase tracking-widest">{item.name}</span>
                     </div>
@@ -467,7 +645,7 @@ export default function Home() {
           /* DASHBOARD */
           <div className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
             <div className="mb-6 md:mb-12 border-b border-earth-light pb-5 md:pb-6">
-              <h2 className="text-2xl md:text-3xl font-serif text-earth-dark uppercase tracking-widest">Visitor Tracking</h2>
+              <h2 className="text-2xl md:text-3xl font-elegant text-earth-dark uppercase tracking-widest">Visitor Tracking</h2>
               <p className="text-earth-mid text-xs md:text-sm italic">Real-time visitor insights and engagement (SalesIQ style).</p>
             </div>
             <div className="bg-white rounded-3xl p-4 md:p-8 shadow-2xl border border-earth-light min-h-[500px]">
@@ -475,48 +653,32 @@ export default function Home() {
                 <div className="flex items-center gap-3 md:gap-4 flex-wrap">
                   <div className="flex items-center gap-2 bg-earth-cream/50 px-3 py-1.5 rounded-full shadow-sm border border-earth-light">
                     <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                    <span className="text-earth-dark text-[10px] font-bold uppercase tracking-widest font-mono">Live Visitors</span>
-                  </div>
-                  <div className="flex bg-earth-cream rounded-lg p-1 border border-earth-light">
-                    {(['All', 'Japan', 'Philippines'] as const).map((nat) => (
-                      <button
-                        key={nat}
-                        onClick={() => setSelectedNationality(nat)}
-                        className={`px-2.5 py-1 rounded-md transition-all ${
-                          selectedNationality === nat 
-                            ? 'bg-earth-dark text-white shadow-md' 
-                            : 'text-earth-mid hover:text-earth-dark'
-                        }`}
-                      >
-                        <img src={nationalityFlagSrc(nat)} alt={nat} className="w-5 h-5" />
-                      </button>
-                    ))}
+                    <span className="text-earth-dark text-[10px] font-bold uppercase tracking-widest font-mono">Live Visitors (Global)</span>
                   </div>
                 </div>
                 <div className="text-earth-mid text-[10px] uppercase font-bold tracking-widest flex items-center gap-2">
-                  <span>Showing {filteredVisitors.length}</span>
-                  <img src={nationalityFlagSrc(selectedNationality)} alt={selectedNationality} className="w-4 h-4" />
+                  <span>Showing {activeVisitors.length}</span>
                 </div>
               </div>
               
               <div className="grid gap-4">
-                {filteredVisitors.length === 0 ? (
+                {activeVisitors.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 md:py-20 text-earth-mid italic">
                     <p>No active visitors.</p>
                   </div>
                 ) : (
-                  filteredVisitors.map((visitor) => (
+                  activeVisitors.map((visitor) => (
                     <div key={visitor.id} className="group bg-earth-cream/20 hover:bg-earth-cream/40 p-4 md:p-6 rounded-2xl border border-earth-light transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4 min-w-0">
                         <div className="w-12 h-12 rounded-full bg-earth-dark shadow-lg overflow-hidden shrink-0">
-                          <img src={visitor.avatar} alt="" className="w-full h-full object-cover" />
+                          <img src={visitor.avatar} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-serif text-base md:text-lg text-earth-dark font-bold truncate">{visitor.name}</h4>
+                          <h4 className="font-elegant text-base md:text-lg text-earth-dark font-bold truncate">{visitor.name}</h4>
                           <div className="flex gap-3 text-[10px] uppercase font-bold tracking-widest text-earth-mid items-center">
                             <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Online</span>
                             <span>•</span>
-                            <img src={nationalityFlagSrc(visitor.nationality || 'All')} alt={visitor.nationality || 'All'} className="w-4 h-4" />
+                            <span>Country: {visitor.nationality || 'Unknown'}</span>
                           </div>
                         </div>
                       </div>
@@ -533,10 +695,10 @@ export default function Home() {
               
               <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                 {[
-                  { label: 'Group Visitors', val: filteredVisitors.length.toString(), color: 'text-earth-dark' },
-                  { label: 'Live Chats', val: '0', color: 'text-emerald-600' },
-                  { label: 'Avg Time', val: '4m 20s', color: 'text-amber-600' },
-                  { label: 'Conversion', val: '12%', color: 'text-blue-600' }
+                  { label: 'Total Visitors', val: totalVisitorsCount.toString(), color: 'text-earth-dark' },
+                  { label: 'Live Chats', val: liveChatsCount.toString(), color: 'text-emerald-600' },
+                  { label: 'Avg Time', val: formatDuration(avgTimeMs), color: 'text-amber-600' },
+                  { label: 'Conversion', val: `${conversionPct}%`, color: 'text-blue-600' }
                 ].map((stat, i) => (
                   <div key={i} className="bg-earth-cream/30 p-3 md:p-4 rounded-2xl border border-earth-light">
                     <p className="text-earth-mid text-[8px] md:text-[10px] uppercase font-bold tracking-widest mb-1">{stat.label}</p>
@@ -578,8 +740,8 @@ export default function Home() {
       {/* Footer */}
       <footer className="bg-earth-dark text-earth-cream py-16 text-center">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="text-2xl font-serif italic font-bold uppercase tracking-widest mb-4">Karisma</div>
-          <p className="text-xs opacity-60 mb-8 max-w-md mx-auto">Physical and mental well-being for your home & hotel massage needs.</p>
+          <div className="text-2xl font-elegant italic font-bold uppercase tracking-widest mb-4">Karisma</div>
+          <p className="text-xs opacity-60 mb-8 max-w-md mx-auto text-justified">Physical and mental well-being for your home & hotel massage needs.</p>
           <div className="text-[10px] opacity-40 uppercase tracking-widest">© 2026 Karisma Massage Services.</div>
         </div>
       </footer>

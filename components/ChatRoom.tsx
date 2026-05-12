@@ -33,12 +33,6 @@ const isIncomingMessagePayload = (data: unknown): data is IncomingMessagePayload
   return true;
 };
 
-const nationalityFlagSrc = (nationality?: string) => {
-  if (nationality === 'Japan') return '/icons/country-jp.png';
-  if (nationality === 'Philippines') return '/icons/country-ph.png';
-  return null;
-};
-
 const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose, initialMessages, onNewMessage }) => {
   const isSupport = user.id === 'staff-main';
   const [inputText, setInputText] = useState('');
@@ -152,7 +146,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose, initialMessage
             <img src={user.avatar} alt="" className="w-full h-full object-cover" />
           </div>
           <div>
-            <h3 className="font-serif text-lg md:text-xl font-bold leading-tight">
+            <h3 className="font-elegant text-lg md:text-xl font-bold leading-tight">
               {user.name}
             </h3>
             <div className="flex items-center gap-1.5">
@@ -160,12 +154,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, myId, onClose, initialMessage
               <p className="text-[10px] md:text-xs text-earth-cream/70 uppercase tracking-widest font-bold">
                 Live
               </p>
-              {nationalityFlagSrc(user.nationality) && (
-                <img
-                  src={nationalityFlagSrc(user.nationality) as string}
-                  alt={user.nationality}
-                  className="w-4 h-4 md:w-5 md:h-5"
-                />
+              {user.nationality && (
+                <span className="text-[10px] md:text-xs text-earth-cream/70 uppercase tracking-widest font-bold">
+                  • {user.nationality}
+                </span>
               )}
             </div>
           </div>
